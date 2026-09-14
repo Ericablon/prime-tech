@@ -26,7 +26,7 @@ function Protected({ children }: { children: React.ReactNode }) {
 
 function PermissionRoute({ permission, children }: { permission: Permission; children: React.ReactNode }) {
   const { user } = useAuth();
-  if (!can(user?.role_code, permission)) return <Navigate to="/" replace />;
+  if (!can(user, permission)) return <Navigate to="/" replace />;
   return <>{children}</>;
 }
 
@@ -40,14 +40,14 @@ function DocumentRoute({ children }: { children: React.ReactNode }) {
 export default function App() {
   return <Routes>
     <Route path="/login" element={<LoginPage />} />
-    <Route path="/documentos/os/:id" element={<DocumentRoute><OrderDocument /></DocumentRoute>} />
+    <Route path="/documentos/os/:id" element={<DocumentRoute><PermissionRoute permission="orders.view"><OrderDocument /></PermissionRoute></DocumentRoute>} />
     <Route path="/" element={<Protected><DashboardPage /></Protected>} />
-    <Route path="/ordens" element={<Protected><OrdersPage /></Protected>} />
+    <Route path="/ordens" element={<Protected><PermissionRoute permission="orders.view"><OrdersPage /></PermissionRoute></Protected>} />
     <Route path="/ordens/nova" element={<Protected><PermissionRoute permission="orders.create"><NewOrderPage /></PermissionRoute></Protected>} />
-    <Route path="/ordens/:id" element={<Protected><OrderDetailPage /></Protected>} />
-    <Route path="/clientes" element={<Protected><ClientsPage /></Protected>} />
-    <Route path="/equipamentos" element={<Protected><EquipmentPage /></Protected>} />
-    <Route path="/estoque" element={<Protected><StockPage /></Protected>} />
+    <Route path="/ordens/:id" element={<Protected><PermissionRoute permission="orders.view"><OrderDetailPage /></PermissionRoute></Protected>} />
+    <Route path="/clientes" element={<Protected><PermissionRoute permission="clients.view"><ClientsPage /></PermissionRoute></Protected>} />
+    <Route path="/equipamentos" element={<Protected><PermissionRoute permission="equipment.view"><EquipmentPage /></PermissionRoute></Protected>} />
+    <Route path="/estoque" element={<Protected><PermissionRoute permission="stock.view"><StockPage /></PermissionRoute></Protected>} />
     <Route path="/financeiro" element={<Protected><PermissionRoute permission="finance.view"><FinancePage /></PermissionRoute></Protected>} />
     <Route path="/fiscal" element={<Protected><PermissionRoute permission="fiscal.view"><FiscalPage /></PermissionRoute></Protected>} />
     <Route path="/agenda" element={<Protected><PlaceholderPage title="Agenda" description="Agenda técnica, prazos, retiradas e compromissos." /></Protected>} />
