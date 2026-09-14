@@ -2,7 +2,11 @@
 -- Execute em um NOVO projeto Supabase, separado dos demais projetos.
 -- O frontend usa apenas ANON KEY. Nunca exponha SERVICE_ROLE no navegador.
 
+begin;
 create extension if not exists pgcrypto;
+create schema if not exists private;
+revoke all on schema private from public;
+grant usage on schema private to authenticated;
 
 -- =========================================================
 -- Helpers
@@ -10,7 +14,8 @@ create extension if not exists pgcrypto;
 create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
-as $$
+set search_path = public
+as $
 begin
   new.updated_at = now();
   return new;
@@ -95,14 +100,14 @@ create table if not exists public.profiles (
   updated_at timestamptz not null default now()
 );
 
-create or replace function public.handle_new_user()
+create or replace function private.handle_new_user()
 returns trigger
 language plpgsql
 security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, full_name, role_code)
+  insert into public.profiles (id, full_name, role_code, active)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', split_part(coalesce(new.email, ''), '@', 1)),
@@ -110,7 +115,8 @@ begin
       when new.raw_app_meta_data->>'role_code' in ('atendimento','tecnico','gestor')
         then new.raw_app_meta_data->>'role_code'
       else 'atendimento'
-    end
+    end,
+    coalesce(new.raw_app_meta_data->>'role_code' in ('atendimento','tecnico','gestor'), false)
   )
   on conflict (id) do nothing;
   return new;
@@ -120,9 +126,9 @@ $$;
 drop trigger if exists on_auth_user_created on auth.users;
 create trigger on_auth_user_created
 after insert on auth.users
-for each row execute procedure public.handle_new_user();
+for each row execute procedure private.handle_new_user();
 
-create or replace function public.current_role()
+create or replace function private.current_role()
 returns text
 language sql
 stable
@@ -132,7 +138,7 @@ as $$
   select role_code from public.profiles where id = auth.uid() and active = true;
 $$;
 
-create or replace function public.has_permission(p_permission text)
+create or replace function private.has_permission(p_permission text)
 returns boolean
 language sql
 stable
@@ -277,7 +283,7 @@ create index if not exists order_history_order_idx on public.service_order_statu
 create or replace function public.recalculate_service_order_totals()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path = public
 as $$
 declare
@@ -313,13 +319,13 @@ for each row execute function public.recalculate_service_order_totals();
 create or replace function public.enforce_order_field_permissions()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path = public
 as $$
 declare
   v_role text;
 begin
-  v_role := public.current_role();
+  v_role := private.current_role();
 
   if v_role = 'gestor' then
     return new;
@@ -328,14 +334,14 @@ begin
   if (new.diagnosis is distinct from old.diagnosis
       or new.technical_notes is distinct from old.technical_notes
       or new.estimated_days is distinct from old.estimated_days)
-     and v_role <> 'tecnico' then
+     and not private.has_permission('orders.tech') then
     raise exception 'Somente Técnico ou Gestor pode alterar diagnóstico técnico';
   end if;
 
   if (new.approval_status is distinct from old.approval_status
       or new.approval_notes is distinct from old.approval_notes
       or new.approved_at is distinct from old.approved_at)
-     and v_role <> 'atendimento' then
+     and not private.has_permission('orders.customer_approval') then
     -- Gestor já retornou acima. Alterações automáticas durante ação de atendimento também passam.
     raise exception 'Somente Atendimento ou Gestor pode registrar a decisão do cliente';
   end if;
@@ -352,7 +358,7 @@ for each row execute function public.enforce_order_field_permissions();
 create or replace function public.enforce_order_status_transition()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path = public
 as $$
 declare
@@ -363,20 +369,19 @@ begin
     return new;
   end if;
 
-  v_role := public.current_role();
+  v_role := private.current_role();
 
   if v_role = 'gestor' then
     v_allowed := true;
-  elsif v_role = 'atendimento' then
-    v_allowed := (old.status = 'waiting_customer' and new.status in ('approved','cancelled'))
-      or (old.status = 'ready_for_pickup' and new.status = 'delivered')
-      or (old.status = 'triage' and new.status = 'waiting_technician');
-  elsif v_role = 'tecnico' then
-    v_allowed := (old.status = 'waiting_technician' and new.status in ('diagnosis','waiting_customer'))
+  else
+    v_allowed := (private.has_permission('orders.customer_approval') and old.status = 'waiting_customer' and new.status in ('approved','cancelled'))
+      or (private.has_permission('orders.delivery') and old.status = 'ready_for_pickup' and new.status = 'delivered')
+      or (private.has_permission('orders.create') and old.status = 'triage' and new.status = 'waiting_technician');
+    v_allowed := v_allowed or (private.has_permission('orders.tech') and ((old.status = 'waiting_technician' and new.status in ('diagnosis','waiting_customer'))
       or (old.status = 'diagnosis' and new.status = 'waiting_customer')
       or (old.status = 'approved' and new.status = 'in_repair')
       or (old.status = 'in_repair' and new.status in ('waiting_part','ready_for_pickup'))
-      or (old.status = 'waiting_part' and new.status in ('in_repair','ready_for_pickup'));
+      or (old.status = 'waiting_part' and new.status in ('in_repair','ready_for_pickup'))));
   end if;
 
   if not v_allowed then
@@ -408,7 +413,7 @@ create or replace function public.transition_service_order(
 )
 returns public.service_orders
 language plpgsql
-security definer
+security invoker
 set search_path = public
 as $$
 declare
@@ -420,7 +425,7 @@ begin
     raise exception 'Ordem de serviço não encontrada';
   end if;
 
-  if not public.has_permission('orders.view') then
+  if not private.has_permission('orders.view') then
     raise exception 'Usuário sem permissão para acessar ordens de serviço';
   end if;
 
@@ -572,68 +577,116 @@ alter table public.fiscal_documents enable row level security;
 alter table public.audit_logs enable row level security;
 
 -- Reference tables
-create policy roles_read on public.roles for select to authenticated using (true);
-create policy permissions_read on public.permissions for select to authenticated using (true);
-create policy role_permissions_read on public.role_permissions for select to authenticated using (true);
-create policy role_permissions_admin_all on public.role_permissions for all to authenticated using (public.has_permission('admin.manage')) with check (public.has_permission('admin.manage'));
+create policy roles_read on public.roles for select to authenticated using (private.current_role() is not null);
+create policy permissions_read on public.permissions for select to authenticated using (private.current_role() is not null);
+create policy role_permissions_read on public.role_permissions for select to authenticated using (private.current_role() is not null);
+create policy role_permissions_admin_all on public.role_permissions for all to authenticated using (private.has_permission('admin.manage')) with check (private.has_permission('admin.manage'));
 
 -- Profiles
-create policy profiles_read on public.profiles for select to authenticated using (id = auth.uid() or public.has_permission('admin.manage'));
-create policy profiles_admin_all on public.profiles for all to authenticated using (public.has_permission('admin.manage')) with check (public.has_permission('admin.manage'));
+create policy profiles_read on public.profiles for select to authenticated using (id = auth.uid() or private.has_permission('admin.manage'));
+create policy profiles_admin_all on public.profiles for update to authenticated using (private.has_permission('admin.manage')) with check (private.has_permission('admin.manage'));
 
 -- Company
-create policy company_read on public.company_settings for select to authenticated using (true);
-create policy company_admin_all on public.company_settings for all to authenticated using (public.has_permission('admin.manage')) with check (public.has_permission('admin.manage'));
+create policy company_read on public.company_settings for select to authenticated using (private.current_role() is not null);
+create policy company_admin_all on public.company_settings for all to authenticated using (private.has_permission('admin.manage')) with check (private.has_permission('admin.manage'));
 
 -- Clients
-create policy clients_read on public.clients for select to authenticated using (public.has_permission('clients.view'));
-create policy clients_insert on public.clients for insert to authenticated with check (public.has_permission('clients.manage'));
-create policy clients_update on public.clients for update to authenticated using (public.has_permission('clients.manage')) with check (public.has_permission('clients.manage'));
-create policy clients_delete on public.clients for delete to authenticated using (public.has_permission('admin.manage'));
+create policy clients_read on public.clients for select to authenticated using (private.has_permission('clients.view'));
+create policy clients_insert on public.clients for insert to authenticated with check (private.has_permission('clients.manage'));
+create policy clients_update on public.clients for update to authenticated using (private.has_permission('clients.manage')) with check (private.has_permission('clients.manage'));
+create policy clients_delete on public.clients for delete to authenticated using (private.has_permission('admin.manage'));
 
 -- Equipment
-create policy equipment_read on public.equipment for select to authenticated using (public.has_permission('equipment.view'));
-create policy equipment_insert on public.equipment for insert to authenticated with check (public.has_permission('equipment.manage'));
-create policy equipment_update on public.equipment for update to authenticated using (public.has_permission('equipment.manage')) with check (public.has_permission('equipment.manage'));
-create policy equipment_delete on public.equipment for delete to authenticated using (public.has_permission('admin.manage'));
+create policy equipment_read on public.equipment for select to authenticated using (private.has_permission('equipment.view'));
+create policy equipment_insert on public.equipment for insert to authenticated with check (private.has_permission('equipment.manage'));
+create policy equipment_update on public.equipment for update to authenticated using (private.has_permission('equipment.manage')) with check (private.has_permission('equipment.manage'));
+create policy equipment_delete on public.equipment for delete to authenticated using (private.has_permission('admin.manage'));
 
 -- Orders
-create policy orders_read on public.service_orders for select to authenticated using (public.has_permission('orders.view'));
-create policy orders_insert on public.service_orders for insert to authenticated with check (public.has_permission('orders.create'));
+create policy orders_read on public.service_orders for select to authenticated using (private.has_permission('orders.view'));
+create policy orders_insert on public.service_orders for insert to authenticated with check (private.has_permission('orders.create'));
 create policy orders_update on public.service_orders for update to authenticated using (
-  public.has_permission('orders.tech') or public.has_permission('orders.customer_approval') or public.has_permission('orders.delivery') or public.has_permission('admin.manage')
+  private.has_permission('orders.tech') or private.has_permission('orders.customer_approval') or private.has_permission('orders.delivery') or private.has_permission('admin.manage')
 ) with check (
-  public.has_permission('orders.tech') or public.has_permission('orders.customer_approval') or public.has_permission('orders.delivery') or public.has_permission('admin.manage')
+  private.has_permission('orders.tech') or private.has_permission('orders.customer_approval') or private.has_permission('orders.delivery') or private.has_permission('admin.manage')
 );
-create policy orders_delete on public.service_orders for delete to authenticated using (public.has_permission('admin.manage'));
+create policy orders_delete on public.service_orders for delete to authenticated using (private.has_permission('admin.manage'));
 
 -- Order items/history
-create policy order_items_read on public.service_order_items for select to authenticated using (public.has_permission('orders.view'));
-create policy order_items_write on public.service_order_items for all to authenticated using (public.has_permission('orders.tech') or public.has_permission('admin.manage')) with check (public.has_permission('orders.tech') or public.has_permission('admin.manage'));
-create policy order_history_read on public.service_order_status_history for select to authenticated using (public.has_permission('orders.view'));
-create policy order_history_insert on public.service_order_status_history for insert to authenticated with check (public.has_permission('orders.view'));
+create policy order_items_read on public.service_order_items for select to authenticated using (private.has_permission('orders.view'));
+create policy order_items_write on public.service_order_items for all to authenticated using (private.has_permission('orders.tech') or private.has_permission('admin.manage')) with check (private.has_permission('orders.tech') or private.has_permission('admin.manage'));
+create policy order_history_read on public.service_order_status_history for select to authenticated using (private.has_permission('orders.view'));
+create policy order_history_insert on public.service_order_status_history for insert to authenticated with check (private.has_permission('orders.view'));
 
 -- Stock
-create policy stock_read on public.stock_items for select to authenticated using (public.has_permission('stock.view'));
-create policy stock_manage on public.stock_items for all to authenticated using (public.has_permission('stock.manage')) with check (public.has_permission('stock.manage'));
-create policy stock_movements_read on public.stock_movements for select to authenticated using (public.has_permission('stock.view'));
-create policy stock_movements_manage on public.stock_movements for all to authenticated using (public.has_permission('stock.manage') or public.has_permission('orders.tech')) with check (public.has_permission('stock.manage') or public.has_permission('orders.tech'));
+create policy stock_read on public.stock_items for select to authenticated using (private.has_permission('stock.view'));
+create policy stock_manage on public.stock_items for all to authenticated using (private.has_permission('stock.manage')) with check (private.has_permission('stock.manage'));
+create policy stock_movements_read on public.stock_movements for select to authenticated using (private.has_permission('stock.view'));
+create policy stock_movements_manage on public.stock_movements for all to authenticated using (private.has_permission('stock.manage') or private.has_permission('orders.tech')) with check (private.has_permission('stock.manage') or private.has_permission('orders.tech'));
 
 -- Finance
-create policy cash_read on public.cash_sessions for select to authenticated using (public.has_permission('finance.view'));
-create policy cash_manage on public.cash_sessions for all to authenticated using (public.has_permission('finance.manage')) with check (public.has_permission('finance.manage'));
-create policy finance_read on public.financial_entries for select to authenticated using (public.has_permission('finance.view'));
-create policy finance_manage on public.financial_entries for all to authenticated using (public.has_permission('finance.manage')) with check (public.has_permission('finance.manage'));
+create policy cash_read on public.cash_sessions for select to authenticated using (private.has_permission('finance.view'));
+create policy cash_manage on public.cash_sessions for all to authenticated using (private.has_permission('finance.manage')) with check (private.has_permission('finance.manage'));
+create policy finance_read on public.financial_entries for select to authenticated using (private.has_permission('finance.view'));
+create policy finance_manage on public.financial_entries for all to authenticated using (private.has_permission('finance.manage')) with check (private.has_permission('finance.manage'));
 
 -- Fiscal
-create policy fiscal_read on public.fiscal_documents for select to authenticated using (public.has_permission('fiscal.view'));
-create policy fiscal_manage on public.fiscal_documents for all to authenticated using (public.has_permission('fiscal.manage')) with check (public.has_permission('fiscal.manage'));
+create policy fiscal_read on public.fiscal_documents for select to authenticated using (private.has_permission('fiscal.view'));
+create policy fiscal_manage on public.fiscal_documents for all to authenticated using (private.has_permission('fiscal.manage')) with check (private.has_permission('fiscal.manage'));
 
 -- Audit
-create policy audit_read on public.audit_logs for select to authenticated using (public.has_permission('admin.manage'));
-create policy audit_insert on public.audit_logs for insert to authenticated with check (auth.uid() = user_id or public.has_permission('admin.manage'));
+create policy audit_read on public.audit_logs for select to authenticated using (private.has_permission('admin.manage'));
+create policy audit_insert on public.audit_logs for insert to authenticated with check (auth.uid() = user_id or private.has_permission('admin.manage'));
 
 -- Basic grants. RLS remains the actual access gate.
 grant usage on schema public to authenticated;
 grant select, insert, update, delete on all tables in schema public to authenticated;
 grant usage, select on all sequences in schema public to authenticated;
+-- Administrative changes are atomic and cannot remove the management role.
+alter table public.profiles add column email text;
+alter table public.profiles add column job_title text;
+alter table public.profiles add column phone text;
+
+create or replace function public.save_role_permissions(p_role text, p_permissions text[])
+returns void language plpgsql security invoker set search_path = public as $$
+begin
+  if not private.has_permission('admin.manage') then raise exception 'Acesso negado'; end if;
+  if p_role not in ('atendimento','tecnico') then raise exception 'O papel Gestor é protegido'; end if;
+  if p_permissions is null or 'admin.manage' = any(p_permissions) then raise exception 'Permissões inválidas'; end if;
+  if exists(select 1 from unnest(p_permissions) p where not exists(select 1 from public.permissions where code=p)) then raise exception 'Permissão desconhecida'; end if;
+  perform pg_advisory_xact_lock(hashtext('prime-tech-permissions'));
+  delete from public.role_permissions where role_code=p_role;
+  insert into public.role_permissions(role_code,permission_code)
+  select p_role, p from (select distinct unnest(p_permissions) p union select 'dashboard.view') q;
+  insert into public.audit_logs(user_id,action,entity_type,metadata)
+  values(auth.uid(),'permissions.updated','role',jsonb_build_object('role',p_role,'permissions',p_permissions));
+end $$;
+
+create or replace function private.protect_administration()
+returns trigger language plpgsql security invoker set search_path=public as $$
+begin
+  if tg_table_name='profiles' then
+    if auth.uid() is not null and old.id=auth.uid() and
+      (new.role_code is distinct from old.role_code or new.active is distinct from old.active)
+      then raise exception 'Você não pode alterar seu próprio acesso'; end if;
+    if old.active and old.role_code='gestor' and (not new.active or new.role_code<>'gestor') then
+      perform pg_advisory_xact_lock(hashtext('prime-tech-managers'));
+      if not exists(select 1 from public.profiles where active and role_code='gestor' and id<>old.id)
+        then raise exception 'Mantenha ao menos um Gestor ativo'; end if;
+    end if;
+    return new;
+  end if;
+  if tg_op<>'INSERT' and old.role_code='gestor' then raise exception 'Permissões do Gestor são protegidas'; end if;
+  if tg_op<>'DELETE' and (new.role_code='gestor' or new.permission_code='admin.manage') then raise exception 'Administração é exclusiva do Gestor'; end if;
+  return coalesce(new,old);
+end $$;
+create trigger protect_profile_access before update on public.profiles for each row execute function private.protect_administration();
+create trigger protect_role_permissions before insert or update or delete on public.role_permissions for each row execute function private.protect_administration();
+
+create index on public.service_order_items(service_order_id);
+revoke all on all functions in schema private from public,anon;
+grant execute on function private.current_role(),private.has_permission(text) to authenticated;
+revoke execute on all functions in schema public from public,anon;
+grant execute on function public.transition_service_order(uuid,text,text),public.save_role_permissions(text,text[]) to authenticated;
+revoke all on all tables in schema public from anon;
+commit;
