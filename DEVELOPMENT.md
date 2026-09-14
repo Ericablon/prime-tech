@@ -1,29 +1,31 @@
-# Prime Tech — desenvolvimento
+# Ambiente de desenvolvimento — 14/09/2026
 
-Projeto extraído do starter fornecido, mantendo React, Vite, TypeScript, Tailwind e identidade visual. A logo enviada está em `public/brand/prime-tech-logo.jpeg`.
+- Repositório: https://github.com/Ericablon/prime-tech (público).
+- Desenvolvimento: branch `develop`; workflow `.github/workflows/development.yml`.
+- Supabase: projeto `Primetech`, referência `gwvssoaqvqcmofdsirtl`, organização Ericablon.
+- Região efetiva: Oregon (`us-west-2`).
+- 16 tabelas com RLS e 36 políticas instaladas pelo SQL Editor. A execução manual não registra histórico de migrations da CLI.
+- Login conectado ao Supabase; novos perfis ficam inativos até ativação pelo Gestor.
+- Administração: busca de colaboradores, papel, ativação/desativação e permissões por papel salvas via RPC. Gestor protegido; autoalteração de acesso bloqueada.
+- Nesta etapa, novos usuários são criados no Supabase Auth. Convites diretamente pelo painel ainda não foram implementados.
 
-## Executar
+## Primeiro acesso
 
-Use Node.js 22 ou superior. Execute `npm ci --ignore-scripts`, depois `npm run dev`. O modo inicial é demonstração, com dados no navegador. Não use dados reais nessa demonstração.
-
-## GitHub
-
-A branch de desenvolvimento é `develop`. O workflow `.github/workflows/development.yml` verifica pull requests e publica pushes dessa branch no GitHub Pages. Após criar o repositório e enviar o código, selecione GitHub Actions em Settings → Pages. Rotas usam hash para permitir atualizar páginas diretamente no GitHub Pages. Assets usam caminhos relativos.
-
-O repositório remoto e a publicação ainda dependem de autenticação e confirmação da conta GitHub.
-
-## Supabase
-
-O projeto remoto ainda não foi criado nem recebeu SQL. A organização e eventual custo precisam ser definidos. A migração original ainda precisa de revisão completa e testes de permissões em banco de desenvolvimento antes de ser aplicada.
-
-Foi corrigida a origem do perfil no cadastro: `role_code` agora vem de `raw_app_meta_data`, que é controlado pelo servidor, e não dos metadados editáveis pelo usuário. Desative cadastro público antes de disponibilizar o banco e crie usuários por administração confiável.
-
-Para conectar, configure as variáveis de repositório `VITE_DATA_MODE=supabase`, `VITE_SUPABASE_URL` e `VITE_SUPABASE_PUBLISHABLE_KEY`. Localmente, use `.env.local`. Nunca use service_role ou chave secreta no frontend. Configuração ausente em modo Supabase mostra erro, sem liberar acesso demo automaticamente.
-
-## Pendências funcionais herdadas
-
-Emissão fiscal real, administração de usuários por backend, uploads privados e movimentação integrada de estoque/caixa ainda não estão concluídos. O envio do orçamento atualmente faz várias gravações separadas; deve virar uma transação no backend antes do uso operacional. A revisão completa de RLS e os testes entre os três perfis continuam pendentes.
+Criar a conta do responsável no Supabase Auth, confirmar sua identidade e ativar seu perfil como Gestor no SQL Editor. Não colocar senhas no repositório. O endereço de e-mail do responsável ainda precisa ser informado.
 
 ## Validação
 
-Dependências fixadas com lockfile. A compilação TypeScript e a geração do bundle são verificadas nesta preparação. O teste ponta a ponta com autenticação real depende do Supabase de desenvolvimento. O CSS avulso fornecido serviu de referência; o CSS do starter foi mantido porque já implementa a mesma paleta e os componentes usados pelo aplicativo.
+`npm run build` passou com a configuração real do Supabase.
+Consultas confirmaram 16/16 tabelas com RLS, nenhum acesso anônimo a profiles e nenhuma execução anônima da RPC administrativa.
+Teste transacional passou para Gestor, Técnico, cadastro pendente, bloqueio de autoalteração e tentativa de escalada. Os usuários de teste foram revertidos com ROLLBACK.
+A validação autenticada completa da interface depende do primeiro acesso do responsável.
+
+## Configuração
+
+O workflow usa apenas URL e chave publicável Supabase. As variáveis do repositório VITE_DATA_MODE, VITE_SUPABASE_URL e VITE_SUPABASE_PUBLISHABLE_KEY podem substituir esses valores. Nunca incluir chave secreta/service_role no frontend.
+
+A migration inicial destina-se a banco vazio; não executar novamente sobre o banco instalado. Mudanças futuras devem usar migrations incrementais.
+
+## Próximas funcionalidades
+
+Convites administrativos, recuperação de senha, fotos em Storage privado, integração fiscal e movimentações completas de estoque/caixa seguem como próximas etapas. O sistema permanece em desenvolvimento.
