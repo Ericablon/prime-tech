@@ -1,4 +1,4 @@
-import type { RoleCode } from "../types/domain";
+import type { RoleCode, UserProfile } from "../types/domain";
 
 export type Permission =
   | "dashboard.view"
@@ -20,7 +20,7 @@ export type Permission =
   | "reports.view"
   | "admin.manage";
 
-const permissions: Record<RoleCode, Permission[]> = {
+export const defaultPermissions: Record<RoleCode, Permission[]> = {
   atendimento: [
     "dashboard.view",
     "clients.view",
@@ -63,6 +63,7 @@ const permissions: Record<RoleCode, Permission[]> = {
   ],
 };
 
-export function can(role: RoleCode | undefined, permission: Permission) {
-  return !!role && permissions[role].includes(permission);
+export function can(user: UserProfile | null | undefined, permission: Permission) {
+  if (!user || user.active === false) return false;
+  return (user.permissions ?? (user.id.startsWith("demo-") ? defaultPermissions[user.role_code] : [])).includes(permission);
 }
