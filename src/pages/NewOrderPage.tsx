@@ -16,7 +16,7 @@ export function NewOrderPage() {
   const [priority, setPriority] = useState<Priority>("normal");
   const [issue, setIssue] = useState("");
 
-  if (!can(user?.role_code, "orders.create")) return <Navigate to="/ordens" replace />;
+  if (!can(user, "orders.create")) return <Navigate to="/ordens" replace />;
 
   return <div className="mx-auto max-w-4xl space-y-6"><div><h1 className="pt-page-title">Nova Ordem de Serviço</h1><p className="pt-page-subtitle">Entrada realizada pelo atendimento. O técnico recebe a OS na fila.</p></div>
     <form className="pt-card grid gap-5 md:grid-cols-2" onSubmit={async (e) => {

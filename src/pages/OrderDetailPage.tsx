@@ -24,9 +24,9 @@ export function OrderDetailPage() {
   if (loading) return <div className="pt-card">Carregando ordem de serviço…</div>;
   if (!order) return <Navigate to="/ordens" replace />;
 
-  const canTech = can(user?.role_code, "orders.tech");
-  const canApproval = can(user?.role_code, "orders.customer_approval");
-  const canDelivery = can(user?.role_code, "orders.delivery");
+  const canTech = can(user, "orders.tech");
+  const canApproval = can(user, "orders.customer_approval");
+  const canDelivery = can(user, "orders.delivery");
 
   return <div className="space-y-6">
     <div className="flex flex-wrap items-end justify-between gap-4"><div><div className="flex items-center gap-3"><h1 className="pt-page-title">{orderCode(order.order_number)}</h1><StatusBadge status={order.status} /></div><p className="pt-page-subtitle">Aberta em {dateTime.format(new Date(order.created_at))}</p></div><Link className="pt-btn-secondary" to={`/documentos/os/${order.id}`} target="_blank"><Printer size={17} /> Orçamento / impressão</Link></div>

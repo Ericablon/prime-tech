@@ -6,7 +6,7 @@ import { useAuth } from "../contexts/AuthContext";
 import type { RoleCode } from "../types/domain";
 
 export function LoginPage() {
-  const { user, mode, loginDemo, loginWithPassword } = useAuth();
+  const { user, mode, authError, loginDemo, loginWithPassword } = useAuth();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -48,7 +48,7 @@ export function LoginPage() {
           }}>
             <div><label className="pt-label">E-mail</label><input className="pt-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
             <div><label className="pt-label">Senha</label><input className="pt-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
-            {error ? <p className="text-sm text-red-400">{error}</p> : null}
+            {error || authError ? <p role="alert" className="text-sm text-red-400">{error || authError}</p> : null}
             <button className="pt-btn-primary w-full" type="submit">Acessar a plataforma</button>
           </form>
         )}

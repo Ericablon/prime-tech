@@ -10,7 +10,7 @@ export function OrdersPage() {
   const { orders, clients, equipment } = usePrimeTech();
 
   return <div className="space-y-6">
-    <div className="flex items-end justify-between"><div><h1 className="pt-page-title">Ordens de Serviço</h1><p className="pt-page-subtitle">Fluxo de entrada, orçamento, manutenção e entrega.</p></div>{can(user?.role_code, "orders.create") && <Link to="/ordens/nova" className="pt-btn-primary">+ Nova OS</Link>}</div>
+    <div className="flex items-end justify-between"><div><h1 className="pt-page-title">Ordens de Serviço</h1><p className="pt-page-subtitle">Fluxo de entrada, orçamento, manutenção e entrega.</p></div>{can(user, "orders.create") && <Link to="/ordens/nova" className="pt-btn-primary">+ Nova OS</Link>}</div>
     <div className="pt-card overflow-x-auto"><table className="pt-table"><thead><tr><th>OS</th><th>Cliente</th><th>Equipamento</th><th>Entrada</th><th>Valor</th><th>Status</th><th>Data</th></tr></thead><tbody>
       {orders.map((o) => {
         const client = clients.find((c) => c.id === o.client_id);
