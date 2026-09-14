@@ -1,4 +1,4 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { useAuth } from "./AuthContext";
 import { supabase } from "../lib/supabase";
 import { demoClients, demoCompany, demoEquipment, demoFinance, demoOrders, demoStock } from "../data/demoSeed";
@@ -24,6 +24,7 @@ interface PrimeTechContextValue {
   finance: FinancialEntry[];
   company: CompanySettings;
   loading: boolean;
+  error: string;
   createClient: (input: CreateClientInput) => Promise<Client>;
   createEquipment: (input: CreateEquipmentInput) => Promise<Equipment>;
   createOrder: (input: CreateOrderInput) => Promise<ServiceOrder>;
@@ -72,6 +73,8 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
     company: demoCompany,
   });
   const [loading, setLoading] = useState(mode === "supabase");
+  const [error, setError] = useState("");
+  const requestVersion = useRef(0);
 
   useEffect(() => {
     if (mode === "demo") localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
@@ -79,7 +82,9 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
 
   const refresh = async () => {
     if (mode !== "supabase" || !supabase || !user) return;
+    const version = ++requestVersion.current;
     setLoading(true);
+    setError("");
     try {
       const [clientsRes, equipmentRes, ordersRes, stockRes, financeRes, companyRes] = await Promise.all([
         supabase.from("clients").select("*").order("name"),
@@ -91,6 +96,7 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
       ]);
       const errors = [clientsRes.error, equipmentRes.error, ordersRes.error, stockRes.error, financeRes.error, companyRes.error].filter(Boolean);
       if (errors.length) throw errors[0];
+      if (version !== requestVersion.current) return;
       setState({
         clients: (clientsRes.data ?? []) as Client[],
         equipment: (equipmentRes.data ?? []) as Equipment[],
@@ -99,18 +105,27 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
         finance: (financeRes.data ?? []) as FinancialEntry[],
         company: (companyRes.data as CompanySettings | null) ?? demoCompany,
       });
+    } catch (cause) {
+      if (version === requestVersion.current) setError("Não foi possível carregar os dados. Atualize a página para tentar novamente.");
+      throw cause;
     } finally {
-      setLoading(false);
+      if (version === requestVersion.current) setLoading(false);
     }
   };
 
   useEffect(() => {
-    if (mode === "supabase" && user) refresh();
-  }, [mode, user?.id]);
+    if (mode !== "supabase") return;
+    ++requestVersion.current;
+    setState({ clients: [], equipment: [], orders: [], stock: [], finance: [], company: demoCompany });
+    if (user) void refresh().catch(() => {});
+    else setLoading(false);
+    return () => { ++requestVersion.current; };
+  }, [mode, user?.id, user?.permissions?.join(",")]);
 
   const api = useMemo<PrimeTechContextValue>(() => ({
     ...state,
     loading,
+    error,
     refresh,
     async createClient(input) {
       if (mode === "supabase" && supabase) {
@@ -240,7 +255,7 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
       }
       setState((s) => ({ ...s, company: { ...s.company, ...input } }));
     },
-  }), [state, loading, mode, user?.id]);
+  }), [state, loading, error, mode, user?.id]);
 
   return <PrimeTechContext.Provider value={api}>{children}</PrimeTechContext.Provider>;
 }

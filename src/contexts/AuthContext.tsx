@@ -6,6 +6,7 @@ interface AuthContextValue {
   user: UserProfile | null;
   loading: boolean;
   mode: "demo" | "supabase";
+  authError: string;
   loginDemo: (role: RoleCode) => void;
   loginWithPassword: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -28,6 +29,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return saved ? JSON.parse(saved) : null;
   });
   const [loading, setLoading] = useState(mode === "supabase");
+  const [authError, setAuthError] = useState("");
 
   useEffect(() => {
     if (mode !== "supabase" || !supabase) return;
@@ -35,6 +37,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     let active = true;
     const hydrate = async () => {
+      try {
       const { data } = await client.auth.getSession();
       const authUser = data.session?.user;
       if (!authUser) {
@@ -44,14 +47,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
-      const { data: profile } = await client
+      const { data: profile, error } = await client
         .from("profiles")
-        .select("id, full_name, role_code")
+        .select("id, full_name, role_code, active, email, job_title, phone")
         .eq("id", authUser.id)
         .single();
+      if (error) throw error;
+      if (!profile?.active) throw new Error("Seu acesso está pendente ou inativo. Procure o Gestor da Prime Tech.");
+      const { data: grants, error: grantsError } = await client.from("role_permissions").select("permission_code").eq("role_code", profile.role_code);
+      if (grantsError) throw grantsError;
       if (active) {
-        setUser((profile as UserProfile | null) ?? null);
+        setUser({ ...profile, permissions: (grants ?? []).map((grant) => grant.permission_code) } as UserProfile);
+        setAuthError("");
         setLoading(false);
+      }
+      } catch (error) {
+        if (active) {
+          setUser(null);
+          setLoading(false);
+          setAuthError(error instanceof Error ? error.message : "Não foi possível verificar seu acesso. Tente novamente.");
+        }
       }
     };
 
@@ -59,9 +74,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     const { data: listener } = client.auth.onAuthStateChange(() => {
       setTimeout(() => { if (active) void hydrate(); }, 0);
     });
+    const recheck = () => { void hydrate(); };
+    window.addEventListener("focus", recheck);
+    const interval = window.setInterval(recheck, 30000);
     return () => {
       active = false;
       listener.subscription.unsubscribe();
+      window.removeEventListener("focus", recheck);
+      window.clearInterval(interval);
     };
   }, []);
 
@@ -69,6 +89,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     user,
     loading,
     mode,
+    authError,
     loginDemo(role) {
       const next = { id: `demo-${role}`, full_name: demoNames[role], role_code: role } satisfies UserProfile;
       localStorage.setItem("prime-tech-demo-user", JSON.stringify(next));
@@ -84,7 +105,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       localStorage.removeItem("prime-tech-demo-user");
       setUser(null);
     },
-  }), [user, loading]);
+  }), [user, loading, authError]);
 
   if (mode === "supabase" && !isSupabaseConfigured) {
     return <main className="pt-auth-page"><div className="pt-auth-card" role="alert"><h1>Configuração pendente</h1><p>A conexão com o Supabase ainda não foi configurada neste ambiente.</p></div></main>;
