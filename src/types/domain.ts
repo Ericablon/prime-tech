@@ -22,6 +22,12 @@ export interface UserProfile {
   id: string;
   full_name: string;
   role_code: RoleCode;
+  active?: boolean;
+  created_at?: string;
+  email?: string | null;
+  job_title?: string | null;
+  phone?: string | null;
+  permissions?: string[];
 }
 
 export interface Client {
