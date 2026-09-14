@@ -15,7 +15,7 @@ create or replace function public.set_updated_at()
 returns trigger
 language plpgsql
 set search_path = public
-as $
+as $$
 begin
   new.updated_at = now();
   return new;
@@ -107,7 +107,7 @@ security definer
 set search_path = public
 as $$
 begin
-  insert into public.profiles (id, full_name, role_code, active)
+  insert into public.profiles (id, full_name, role_code, active, email)
   values (
     new.id,
     coalesce(new.raw_user_meta_data->>'full_name', split_part(coalesce(new.email, ''), '@', 1)),
@@ -116,7 +116,7 @@ begin
         then new.raw_app_meta_data->>'role_code'
       else 'atendimento'
     end,
-    coalesce(new.raw_app_meta_data->>'role_code' in ('atendimento','tecnico','gestor'), false)
+    coalesce(new.raw_app_meta_data->>'role_code' in ('atendimento','tecnico','gestor'), false), new.email
   )
   on conflict (id) do nothing;
   return new;
