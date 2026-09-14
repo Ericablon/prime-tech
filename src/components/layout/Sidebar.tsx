@@ -44,7 +44,7 @@ export function Sidebar() {
       </div>
 
       <nav className="mt-3 flex-1 overflow-y-auto pb-6">
-        {items.filter((item) => can(user?.role_code, item.permission)).map(({ to, label, icon: Icon }) => (
+        {items.filter((item) => can(user, item.permission)).map(({ to, label, icon: Icon }) => (
           <NavLink key={to} to={to} end={to === "/"} className={({ isActive }) => `pt-nav-item ${isActive ? "pt-nav-item-active" : ""}`}>
             <Icon size={18} />
             <span>{label}</span>

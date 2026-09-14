@@ -2,9 +2,11 @@ import { LogOut, Moon, Sun } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import { Sidebar } from "./Sidebar";
 import { useAuth } from "../../contexts/AuthContext";
+import { usePrimeTech } from "../../contexts/PrimeTechContext";
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout, mode } = useAuth();
+  const { error, loading } = usePrimeTech();
   const [dark, setDark] = useState(() => localStorage.getItem("prime-tech-theme") !== "light");
 
   useEffect(() => {
@@ -28,7 +30,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <button className="pt-btn-secondary" onClick={() => logout()}><LogOut size={17} /> Sair</button>
           </div>
         </header>
-        <main className="p-6">{children}</main>
+        <main className="p-6">{error ? <p role="alert" className="pt-card text-red-400">{error}</p> : loading ? <p role="status">Carregando dados…</p> : children}</main>
       </div>
     </div>
   );
