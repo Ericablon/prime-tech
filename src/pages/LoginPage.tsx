@@ -1,7 +1,7 @@
 import { brandLogo } from "../lib/brand";
 import { useState } from "react";
 import { Navigate } from "react-router-dom";
-import { ShieldCheck, UserRound, Wrench } from "lucide-react";
+import { Eye, EyeOff, ShieldCheck, UserRound, Wrench } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import type { RoleCode } from "../types/domain";
 
@@ -10,6 +10,8 @@ export function LoginPage() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
+  const [showPassword, setShowPassword] = useState(false);
+  const [busy, setBusy] = useState(false);
 
   if (user) return <Navigate to="/" replace />;
 
@@ -20,7 +22,7 @@ export function LoginPage() {
   ];
 
   return (
-    <div className="pt-auth-page">
+    <div className="pt-auth-page"><img className="pt-auth-backdrop" src={brandLogo} alt="" aria-hidden="true" />
       <div className="pt-auth-card">
         <div className="mx-auto mb-5 h-28 w-28 overflow-hidden rounded-full border border-blue-400/30 shadow-[0_0_35px_rgba(22,135,255,.28)]">
           <img src={brandLogo} alt="Prime Tech" className="h-full w-full object-cover" />
@@ -41,17 +43,18 @@ export function LoginPage() {
             ))}
           </div>
         ) : (
-          <form className="mt-7 space-y-4" onSubmit={async (e) => {
+          <form className="mt-8 space-y-5" onSubmit={async (e) => {
             e.preventDefault();
-            setError("");
-            try { await loginWithPassword(email, password); } catch (err) { setError(err instanceof Error ? err.message : "Falha ao entrar"); }
+            setError(""); setBusy(true);
+            try { await loginWithPassword(email.trim(), password); } catch (err) { setError(err instanceof Error ? err.message : "Falha ao entrar"); } finally { setBusy(false); }
           }}>
-            <div><label className="pt-label">E-mail</label><input className="pt-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
-            <div><label className="pt-label">Senha</label><input className="pt-input" type="password" value={password} onChange={(e) => setPassword(e.target.value)} required /></div>
+            <div><label className="pt-label" htmlFor="login-email">E-mail</label><input id="login-email" autoComplete="username" className="pt-input" type="email" value={email} onChange={(e) => setEmail(e.target.value)} required /></div>
+            <div><label className="pt-label" htmlFor="login-password">Senha</label><div className="pt-password-field"><input id="login-password" autoComplete="current-password" className="pt-input" type={showPassword ? "text" : "password"} value={password} onChange={(e) => setPassword(e.target.value)} required /><button type="button" className="pt-password-toggle" aria-label={showPassword ? "Ocultar senha" : "Mostrar senha"} aria-pressed={showPassword} onClick={() => setShowPassword((value) => !value)}>{showPassword ? <EyeOff size={20} /> : <Eye size={20} />}</button></div></div>
             {error || authError ? <p role="alert" className="text-sm text-red-400">{error || authError}</p> : null}
-            <button className="pt-btn-primary w-full" type="submit">Acessar a plataforma</button>
+            <button className="pt-btn-primary w-full" type="submit" disabled={busy}>{busy ? "Entrando…" : "Entrar"}</button>
           </form>
         )}
+        <p className="pt-auth-footer">© Prime Tech · Sistema interno</p>
       </div>
     </div>
   );
