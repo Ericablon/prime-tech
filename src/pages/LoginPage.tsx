@@ -28,8 +28,8 @@ export function LoginPage() {
           <img src={brandLogo} alt="Prime Tech" className="h-full w-full object-cover" />
         </div>
         <div className="text-center">
-          <h1 className="text-2xl font-semibold tracking-wide">Prime Tech</h1>
-          <p className="mt-1 text-sm text-muted">Sistema de Assistência Técnica</p>
+          <h1 className="text-2xl font-semibold tracking-wide">Cronos</h1>
+          <p className="mt-1 text-sm text-muted">Gestão de Assistência Técnica · Prime Tech</p>
         </div>
 
         {mode === "demo" ? (
@@ -54,7 +54,7 @@ export function LoginPage() {
             <button className="pt-btn-primary w-full" type="submit" disabled={busy}>{busy ? "Entrando…" : "Entrar"}</button>
           </form>
         )}
-        <p className="pt-auth-footer">© Prime Tech · Sistema interno</p>
+        <p className="pt-auth-footer">© Cronos · Prime Tech</p>
       </div>
     </div>
   );
