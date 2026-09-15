@@ -25,7 +25,7 @@ const items: Array<{ to: string; label: string; icon: typeof Gauge; permission: 
   { to: "/estoque", label: "Estoque / Peças", icon: Boxes, permission: "stock.view" },
   { to: "/financeiro", label: "Financeiro", icon: ReceiptText, permission: "finance.view" },
   { to: "/fiscal", label: "Fiscal", icon: FileText, permission: "fiscal.view" },
-  { to: "/agenda", label: "Agenda", icon: CalendarDays, permission: "orders.view" },
+  { to: "/agenda", label: "Programação técnica", icon: CalendarDays, permission: "orders.view" },
   { to: "/relatorios", label: "Relatórios", icon: FileBarChart, permission: "reports.view" },
   { to: "/administracao", label: "Administração", icon: Settings, permission: "admin.manage" },
 ];
@@ -39,7 +39,7 @@ export function Sidebar() {
           <img src={brandLogo} alt="Prime Tech" className="h-full w-full object-cover" />
         </div>
         <div>
-          <div className="font-semibold tracking-[0.2em] text-white">PRIME TECH</div>
+          <div className="font-semibold tracking-[0.2em] text-white">CRONOS</div>
           <div className="text-xs text-slate-400">Assistência Técnica</div>
         </div>
       </div>
