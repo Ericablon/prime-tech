@@ -12,6 +12,7 @@ import {
   Users,
   Wrench,
 } from "lucide-react";
+import { Fragment } from "react";
 import { NavLink } from "react-router-dom";
 import { useAuth } from "../../contexts/AuthContext";
 import { can, type Permission } from "../../lib/permissions";
@@ -45,15 +46,15 @@ export function Sidebar() {
 
       <nav className="mt-3 flex-1 overflow-y-auto pb-6">
         {items.filter((item) => can(user, item.permission)).map(({ to, label, icon: Icon }) => (
-          <NavLink key={to} to={to} end={to === "/"} className={({ isActive }) => `pt-nav-item ${isActive ? "pt-nav-item-active" : ""}`}>
+          <Fragment key={to}>{(to === "/" || to === "/financeiro" || to === "/administracao") && <p className="pt-nav-heading">{to === "/" ? "Operação" : to === "/financeiro" ? "Gestão" : "Configurações"}</p>}<NavLink to={to} end={to === "/"} className={({ isActive }) => `pt-nav-item ${isActive ? "pt-nav-item-active" : ""}`}>
             <Icon size={18} />
             <span>{label}</span>
-          </NavLink>
+          </NavLink></Fragment>
         ))}
       </nav>
 
       <div className="border-t border-white/10 p-4 text-xs text-slate-400">
-        <div className="flex items-center gap-2"><Building2 size={14} /> Tecnologia que impulsiona.</div>
+        <div className="flex items-center gap-2"><Building2 size={14} /> v0.2 · Em desenvolvimento</div>
       </div>
     </aside>
   );
