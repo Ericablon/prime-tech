@@ -20,7 +20,7 @@ create function private.validate_appointment() returns trigger language plpgsql 
 begin
  perform pg_advisory_xact_lock(hashtext('cronos-schedule'));
  if not exists(select 1 from profiles where id=new.technician_id and active and role_code in ('tecnico','gestor')) then raise exception 'Selecione um técnico ativo'; end if;
- if new.status='scheduled' and exists(select 1 from service_appointments where id<>new.id and technician_id=new.technician_id and status='scheduled' and starts_at<new.ends_at and ends_at>new.starts_at) then raise exception 'O técnico já possui um serviço nesse horário'; end if;
+ if new.status='scheduled' and exists(select 1 from service_appointments where service_order_id<>new.service_order_id and technician_id=new.technician_id and status='scheduled' and starts_at<new.ends_at and ends_at>new.starts_at) then raise exception 'O técnico já possui um serviço nesse horário'; end if;
  return new;
 end $$;
 create trigger appointments_validate before insert or update on public.service_appointments for each row execute function private.validate_appointment();
@@ -54,3 +54,4 @@ end $$;
 revoke all on function public.save_technical_quote(uuid,text,integer,jsonb,boolean,timestamptz) from public,anon;
 grant execute on function public.save_technical_quote(uuid,text,integer,jsonb,boolean,timestamptz) to authenticated;
 commit;
+
