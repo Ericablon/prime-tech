@@ -28,10 +28,12 @@ interface PrimeTechContextValue {
   createClient: (input: CreateClientInput) => Promise<Client>;
   createEquipment: (input: CreateEquipmentInput) => Promise<Equipment>;
   createOrder: (input: CreateOrderInput) => Promise<ServiceOrder>;
-  updateTechnical: (id: string, diagnosis: string, estimatedDays: number, items: Omit<ServiceOrderItem, "id" | "service_order_id">[]) => Promise<void>;
+  updateTechnical: (id: string, diagnosis: string, estimatedDays: number, items: Omit<ServiceOrderItem, "id" | "service_order_id">[], submit?: boolean) => Promise<void>;
   transitionOrder: (id: string, status: OrderStatus, notes?: string) => Promise<void>;
   updateCompany: (input: Partial<CompanySettings>) => Promise<void>;
   refresh: () => Promise<void>;
+  addFinancialEntry: (entry: Omit<FinancialEntry, 'id'>) => Promise<void>;
+  addStockItem: (item: Omit<StockItem, 'id'>) => Promise<void>;
 }
 
 const PrimeTechContext = createContext<PrimeTechContextValue | undefined>(undefined);
@@ -127,6 +129,15 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     refresh,
+    async addFinancialEntry(entry) {
+      if (!Number.isFinite(entry.amount) || entry.amount <= 0) throw new Error("Informe um valor positivo.");
+      if (mode === "supabase" && supabase) { const { error } = await supabase.from("financial_entries").insert({ ...entry, created_by: user?.id }); if (error) throw error; await refresh(); }
+      else setState(s => ({ ...s, finance: [{ ...entry, id: uuid() }, ...s.finance] }));
+    },
+    async addStockItem(item) {
+      if (mode === "supabase" && supabase) { const { error } = await supabase.from("stock_items").insert(item); if (error) throw error; await refresh(); }
+      else setState(s => ({ ...s, stock: [{ ...item, id: uuid() }, ...s.stock] }));
+    },
     async createClient(input) {
       if (mode === "supabase" && supabase) {
         const { data, error } = await supabase.from("clients").insert(input).select().single();
@@ -176,7 +187,7 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
       setState((s) => ({ ...s, orders: [order, ...s.orders] }));
       return order;
     },
-    async updateTechnical(id, diagnosis, estimatedDays, items) {
+    async updateTechnical(id, diagnosis, estimatedDays, items, submit = true) {
       const totals = items.reduce(
         (acc, item) => {
           const total = item.quantity * item.unit_price;
@@ -187,25 +198,12 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
         { services: 0, parts: 0 },
       );
       if (mode === "supabase" && supabase) {
-        const { error: updateError } = await supabase
-          .from("service_orders")
-          .update({
-            diagnosis,
-            estimated_days: estimatedDays,
-            total_services: totals.services,
-            total_parts: totals.parts,
-            total_amount: totals.services + totals.parts,
-          })
-          .eq("id", id);
-        if (updateError) throw updateError;
-        const { error: deleteError } = await supabase.from("service_order_items").delete().eq("service_order_id", id);
-        if (deleteError) throw deleteError;
-        if (items.length) {
-          const { error: itemError } = await supabase.from("service_order_items").insert(items.map((item) => ({ ...item, service_order_id: id })));
-          if (itemError) throw itemError;
-        }
-        const { error: rpcError } = await supabase.rpc("transition_service_order", { p_order_id: id, p_new_status: "waiting_customer", p_notes: "Orçamento elaborado" });
-        if (rpcError) throw rpcError;
+        const current = state.orders.find((order) => order.id === id);
+        const { error } = await supabase.rpc("save_technical_quote", {
+          p_order_id: id, p_diagnosis: diagnosis, p_days: estimatedDays,
+          p_items: items, p_submit: submit, p_expected_updated_at: current?.updated_at,
+        });
+        if (error) throw error;
         await refresh();
         return;
       }
@@ -219,7 +217,7 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
           total_services: totals.services,
           total_parts: totals.parts,
           total_amount: totals.services + totals.parts,
-          status: "waiting_customer",
+          status: submit ? "waiting_customer" : order.status,
           updated_at: now(),
         } : order),
       }));
