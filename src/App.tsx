@@ -13,7 +13,7 @@ import { FinancePage } from "./pages/FinancePage";
 import { FiscalPage } from "./pages/FiscalPage";
 import { ReportsPage } from "./pages/ReportsPage";
 import { AdminPage } from "./pages/AdminPage";
-import { PlaceholderPage } from "./pages/PlaceholderPage";
+import { SchedulePage } from "./pages/SchedulePage";
 import { OrderDocument } from "./documents/OrderDocument";
 import { can, type Permission } from "./lib/permissions";
 
@@ -50,7 +50,7 @@ export default function App() {
     <Route path="/estoque" element={<Protected><PermissionRoute permission="stock.view"><StockPage /></PermissionRoute></Protected>} />
     <Route path="/financeiro" element={<Protected><PermissionRoute permission="finance.view"><FinancePage /></PermissionRoute></Protected>} />
     <Route path="/fiscal" element={<Protected><PermissionRoute permission="fiscal.view"><FiscalPage /></PermissionRoute></Protected>} />
-    <Route path="/agenda" element={<Protected><PlaceholderPage title="Agenda" description="Agenda técnica, prazos, retiradas e compromissos." /></Protected>} />
+    <Route path="/agenda" element={<Protected><PermissionRoute permission="orders.view"><SchedulePage /></PermissionRoute></Protected>} />
     <Route path="/relatorios" element={<Protected><PermissionRoute permission="reports.view"><ReportsPage /></PermissionRoute></Protected>} />
     <Route path="/administracao" element={<Protected><PermissionRoute permission="admin.manage"><AdminPage /></PermissionRoute></Protected>} />
     <Route path="*" element={<Navigate to="/" replace />} />
