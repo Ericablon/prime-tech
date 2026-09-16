@@ -32,6 +32,8 @@ export const defaultPermissions: Record<RoleCode, Permission[]> = {
     "orders.customer_approval",
     "orders.delivery",
     "stock.view",
+    "finance.view",
+    "finance.manage",
   ],
   tecnico: [
     "dashboard.view",
