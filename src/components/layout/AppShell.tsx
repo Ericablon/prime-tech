@@ -27,7 +27,7 @@ export function AppShell({ children }: { children: ReactNode }) {
             <p className="text-sm font-semibold">{title}</p><p className="pt-breadcrumb">Início › {title}</p>
             
           </div>
-          <div className="flex items-center gap-2"><div className="hidden sm:block mr-3 text-right"><p className="text-sm font-medium">{user?.email || user?.full_name}</p><p className="text-xs text-muted capitalize">{user?.role_code} · {mode === "demo" ? "Demonstração" : "Sessão ativa"}</p></div>
+          <div className="flex items-center gap-2"><div className="hidden sm:block mr-3 text-right"><p className="text-sm font-medium">{user?.email || user?.full_name}</p><p className="text-xs text-muted capitalize">{user?.role_code === "atendimento" ? "Comercial" : user?.role_code} · {mode === "demo" ? "Demonstração" : "Sessão ativa"}</p></div>
             <button className="pt-btn-secondary !px-3" onClick={() => setDark((v) => !v)} aria-label="Alternar tema">
               {dark ? <Sun size={17} /> : <Moon size={17} />}
             </button>
@@ -39,3 +39,4 @@ export function AppShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
