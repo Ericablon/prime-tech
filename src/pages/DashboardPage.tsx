@@ -21,13 +21,13 @@ export function DashboardPage() {
   return (
     <div className="space-y-6">
       <div className="flex items-end justify-between">
-        <div><h1 className="pt-page-title">Dashboard</h1><p className="pt-page-subtitle">Visão operacional da Prime Tech para o perfil {role}.</p></div>
+        <div><h1 className="pt-page-title">Dashboard</h1><p className="pt-page-subtitle">Visão operacional da Prime Tech para o perfil {role === "atendimento" ? "Comercial" : role}.</p></div>
         {(role === "atendimento" || role === "gestor") ? <Link to="/ordens/nova" className="pt-btn-primary">+ Nova Ordem de Serviço</Link> : null}
       </div>
 
       <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {role === "atendimento" && <>
-          <StatCard label="Aguardando técnico" value={waitingTech} icon={<Wrench size={20} />} />
+          <StatCard label="Orçamentos para enviar" value={orders.filter(o=>o.status === "budget_ready").length} icon={<Wrench size={20} />} />
           <StatCard label="Aguardando cliente" value={waitingCustomer} icon={<Clock3 size={20} />} />
           <StatCard label="Em manutenção" value={repair} icon={<MonitorCog size={20} />} />
           <StatCard label="Prontos para retirada" value={ready} icon={<CircleCheckBig size={20} />} />
@@ -58,3 +58,4 @@ export function DashboardPage() {
     </div>
   );
 }
+

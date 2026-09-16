@@ -6,7 +6,7 @@ import { defaultPermissions, type Permission } from "../lib/permissions";
 import type { RoleCode, UserProfile } from "../types/domain";
 
 const roles: Array<{ code: RoleCode; label: string }> = [
-  { code: "atendimento", label: "Atendimento" }, { code: "tecnico", label: "Técnico" }, { code: "gestor", label: "Gestor" },
+  { code: "atendimento", label: "Comercial" }, { code: "tecnico", label: "Técnico" }, { code: "gestor", label: "Gestor" },
 ];
 const labels: Record<Permission, string> = {
   "dashboard.view": "Acessar painel", "clients.view": "Ver clientes", "clients.manage": "Gerenciar clientes",
@@ -133,3 +133,4 @@ export function AdminPage() {
     </form>
   </div>;
 }
+

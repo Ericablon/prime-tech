@@ -16,7 +16,7 @@ export function LoginPage() {
   if (user) return <Navigate to="/" replace />;
 
   const roles: Array<{ role: RoleCode; label: string; icon: typeof UserRound; description: string }> = [
-    { role: "atendimento", label: "Atendimento", icon: UserRound, description: "Clientes, equipamentos, entrada, aprovação e entrega." },
+    { role: "atendimento", label: "Comercial", icon: UserRound, description: "Clientes, equipamentos, entrada, aprovação e entrega." },
     { role: "tecnico", label: "Técnico", icon: Wrench, description: "Diagnóstico, orçamento e execução da manutenção." },
     { role: "gestor", label: "Gestor", icon: ShieldCheck, description: "Visão total, financeiro, estoque, fiscal e administração." },
   ];
@@ -59,3 +59,4 @@ export function LoginPage() {
     </div>
   );
 }
+

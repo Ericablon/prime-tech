@@ -17,7 +17,7 @@ export function SchedulePage() {
  const [notice,setNotice] = useState(""); const [busy,setBusy] = useState(false);
  const [form,setForm] = useState({service_order_id:"",technician_id:"",starts_at:"",ends_at:"",notes:""});
  const [day,setDay] = useState(""); const [mine,setMine] = useState(user?.role_code === "tecnico");
- const manage = can(user,"admin.manage");
+ const manage = can(user,"orders.customer_approval");
  async function load() {
   if(mode === "demo") { setAppointments(JSON.parse(localStorage.getItem(storageKey) || "[]")); setTechnicians([{id:"demo-tecnico",full_name:"Técnico Prime Tech",role_code:"tecnico"},{id:"demo-gestor",full_name:"Gestor Prime Tech",role_code:"gestor"}]); return; }
   if(!supabase) return;
@@ -48,3 +48,4 @@ export function SchedulePage() {
  <div className="grid gap-4 lg:grid-cols-2">{filtered.map(a=>{const order=orders.find(o=>o.id===a.service_order_id);return <article key={a.id} className="pt-card space-y-3"><div className="flex justify-between gap-3"><strong>{order?orderCode(order.order_number):"Ordem de serviço"}</strong><span className="text-sm text-muted">{a.status==="scheduled"?"Programado":a.status==="completed"?"Concluído":"Cancelado"}</span></div><p>{clients.find(c=>c.id===order?.client_id)?.name}</p><p className="text-sm">{dateTime.format(new Date(a.starts_at))} até {dateTime.format(new Date(a.ends_at))}</p><p className="text-sm text-muted">{technicians.find(t=>t.id===a.technician_id)?.full_name || (a.technician_id===user?.id?"Você":"Técnico designado")}</p><p className="whitespace-pre-wrap text-sm">{a.notes}</p><div className="flex flex-wrap gap-2"><Link className="pt-btn-primary" to={`/ordens/${a.service_order_id}`}>Abrir OS / orçamento</Link>{manage&&a.status==="scheduled"&&<><button disabled={busy} className="pt-btn-secondary" onClick={()=>void changeStatus(a,"completed")}>Concluir agenda</button><button disabled={busy} className="pt-btn-secondary" onClick={()=>void changeStatus(a,"cancelled")}>Cancelar agenda</button></>}</div></article>})}</div>{!filtered.length&&<p className="pt-card text-muted">Nenhum serviço programado para este filtro.</p>}
  </div>;
 }
+
