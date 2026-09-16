@@ -13,7 +13,7 @@ import type {
   OrderStatus,
   ServiceOrder,
   ServiceOrderItem,
-  StockItem,
+  StockItem, PaymentInstallment, PaymentPlanInput, OrderHistory,
 } from "../types/domain";
 
 interface PrimeTechContextValue {
@@ -22,6 +22,8 @@ interface PrimeTechContextValue {
   orders: ServiceOrder[];
   stock: StockItem[];
   finance: FinancialEntry[];
+  installments: PaymentInstallment[];
+  history: OrderHistory[];
   company: CompanySettings;
   loading: boolean;
   error: string;
@@ -33,6 +35,9 @@ interface PrimeTechContextValue {
   updateCompany: (input: Partial<CompanySettings>) => Promise<void>;
   refresh: () => Promise<void>;
   addFinancialEntry: (entry: Omit<FinancialEntry, 'id'>) => Promise<void>;
+  createPaymentPlan: (input: PaymentPlanInput) => Promise<void>;
+  settleInstallment: (id: string) => Promise<void>;
+  recordContact: (id: string, notes: string) => Promise<void>;
   addStockItem: (item: Omit<StockItem, 'id'>) => Promise<void>;
 }
 
@@ -45,18 +50,20 @@ interface DemoState {
   orders: ServiceOrder[];
   stock: StockItem[];
   finance: FinancialEntry[];
+  installments: PaymentInstallment[];
+  history: OrderHistory[];
   company: CompanySettings;
 }
 
 function initialDemoState(): DemoState {
   const saved = localStorage.getItem(STORAGE_KEY);
-  if (saved) return JSON.parse(saved);
+  if (saved) return { installments: [], history: [], ...JSON.parse(saved) };
   return {
     clients: demoClients,
     equipment: demoEquipment,
     orders: demoOrders,
     stock: demoStock,
-    finance: demoFinance,
+    finance: demoFinance, installments: [], history: [],
     company: demoCompany,
   };
 }
@@ -71,7 +78,7 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
     equipment: [],
     orders: [],
     stock: [],
-    finance: [],
+    finance: [], installments: [], history: [],
     company: demoCompany,
   });
   const [loading, setLoading] = useState(mode === "supabase");
@@ -88,15 +95,17 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
     setLoading(true);
     setError("");
     try {
-      const [clientsRes, equipmentRes, ordersRes, stockRes, financeRes, companyRes] = await Promise.all([
+      const [clientsRes, equipmentRes, ordersRes, stockRes, financeRes, companyRes, installmentsRes, historyRes] = await Promise.all([
         supabase.from("clients").select("*").order("name"),
         supabase.from("equipment").select("*").order("created_at", { ascending: false }),
         supabase.from("service_orders").select("*, items:service_order_items(*)").order("created_at", { ascending: false }),
         supabase.from("stock_items").select("*").order("name"),
         supabase.from("financial_entries").select("*").order("occurred_at", { ascending: false }),
         supabase.from("company_settings").select("*").limit(1).maybeSingle(),
+        supabase.from("payment_installments").select("*").order("due_date"),
+        supabase.from("service_order_status_history").select("*").order("changed_at", { ascending: false }),
       ]);
-      const errors = [clientsRes.error, equipmentRes.error, ordersRes.error, stockRes.error, financeRes.error, companyRes.error].filter(Boolean);
+      const errors = [clientsRes.error, equipmentRes.error, ordersRes.error, stockRes.error, financeRes.error, companyRes.error, installmentsRes.error, historyRes.error].filter(Boolean);
       if (errors.length) throw errors[0];
       if (version !== requestVersion.current) return;
       setState({
@@ -105,6 +114,8 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
         orders: (ordersRes.data ?? []) as ServiceOrder[],
         stock: (stockRes.data ?? []) as StockItem[],
         finance: (financeRes.data ?? []) as FinancialEntry[],
+        installments: (installmentsRes.data ?? []) as PaymentInstallment[],
+        history: (historyRes.data ?? []) as OrderHistory[],
         company: (companyRes.data as CompanySettings | null) ?? demoCompany,
       });
     } catch (cause) {
@@ -118,7 +129,7 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     if (mode !== "supabase") return;
     ++requestVersion.current;
-    setState({ clients: [], equipment: [], orders: [], stock: [], finance: [], company: demoCompany });
+    setState({ clients: [], equipment: [], orders: [], stock: [], finance: [], installments: [], history: [], company: demoCompany });
     if (user) void refresh().catch(() => {});
     else setLoading(false);
     return () => { ++requestVersion.current; };
@@ -129,6 +140,31 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
     loading,
     error,
     refresh,
+    async createPaymentPlan(input) {
+      if (mode === "supabase" && supabase) {
+        const args = Object.fromEntries(Object.entries(input).map(([k,v])=>[`p_${k}`,v]));
+        const { error } = await supabase.rpc("create_payment_plan",args); if(error) throw error;
+        await refresh(); return;
+      }
+      if(state.installments.some(p=>p.plan_id===input.request_id)) return;
+      const cents=Math.round(input.amount*100);
+      if(cents<input.count || input.count<1 || input.count>36) throw new Error("Revise valor e parcelas");
+      const rows: PaymentInstallment[]=Array.from({length:input.count},(_,i)=>{
+        const first=new Date(input.first_due+"T12:00:00"); const day=first.getDate(); first.setDate(1); first.setMonth(first.getMonth()+i);
+        first.setDate(Math.min(day,new Date(first.getFullYear(),first.getMonth()+1,0).getDate()));
+        return {id:uuid(),plan_id:input.request_id,installment_number:i+1,installment_count:input.count,service_order_id:input.order_id,type:input.type,category:input.category,description:input.description,amount:(Math.floor(cents/input.count)+(i<cents%input.count?1:0))/100,due_date:first.toLocaleDateString("sv-SE"),payment_method:input.method,paid_at:input.paid?now():null};
+      });
+      setState(s=>({...s,installments:[...s.installments,...rows],finance:[...rows.filter(r=>r.paid_at).map(r=>({id:uuid(),type:r.type,category:r.category,description:r.description,amount:r.amount,occurred_at:r.paid_at!,service_order_id:r.service_order_id,payment_method:r.payment_method,installment_id:r.id})),...s.finance]}));
+    },
+    async settleInstallment(id) {
+      if(mode==="supabase" && supabase) { const {error}=await supabase.rpc("settle_installment",{p_id:id});if(error)throw error;await refresh();return; }
+      setState(s=>{const r=s.installments.find(p=>p.id===id);if(!r || r.paid_at)return s;const at=now();return {...s,installments:s.installments.map(p=>p.id===id?{...p,paid_at:at}:p),finance:[{id:uuid(),type:r.type,category:r.category,description:r.description,amount:r.amount,occurred_at:at,service_order_id:r.service_order_id,payment_method:r.payment_method,installment_id:r.id},...s.finance]};});
+    },
+    async recordContact(id, notes) {
+      if(mode==="supabase" && supabase) {const {error}=await supabase.rpc("record_order_contact",{p_order_id:id,p_notes:notes});if(error)throw error;await refresh();return;}
+      const status=state.orders.find(o=>o.id===id)?.status ?? "";
+      setState(s=>({...s,history:[{id:uuid(),service_order_id:id,from_status:status,to_status:status,notes:`Contato comercial: ${notes}`,changed_at:now()},...s.history]}));
+    },
     async addFinancialEntry(entry) {
       if (!Number.isFinite(entry.amount) || entry.amount <= 0) throw new Error("Informe um valor positivo.");
       if (mode === "supabase" && supabase) { const { error } = await supabase.from("financial_entries").insert({ ...entry, created_by: user?.id }); if (error) throw error; await refresh(); }
@@ -156,7 +192,7 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
         await refresh();
         return data as Equipment;
       }
-      const item: Equipment = { id: uuid(), created_at: now(), ...input };
+      const item: Equipment = { id: uuid(), technical_number: Math.max(0,...state.equipment.map(e=>e.technical_number ?? 0))+1, created_at: now(), ...input };
       setState((s) => ({ ...s, equipment: [item, ...s.equipment] }));
       return item;
     },
@@ -217,7 +253,7 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
           total_services: totals.services,
           total_parts: totals.parts,
           total_amount: totals.services + totals.parts,
-          status: submit ? "waiting_customer" : order.status,
+          status: submit ? (order.status === "budget_ready" ? "waiting_customer" : "budget_ready") : order.status,
           updated_at: now(),
         } : order),
       }));
@@ -231,6 +267,7 @@ export function PrimeTechProvider({ children }: { children: ReactNode }) {
       }
       setState((s) => ({
         ...s,
+        history: [{id:uuid(),service_order_id:id,from_status:s.orders.find(o=>o.id===id)?.status ?? "",to_status:status,notes:notes ?? "",changed_at:now()},...s.history],
         orders: s.orders.map((order) => {
           if (order.id !== id) return order;
           return {
@@ -263,3 +300,4 @@ export function usePrimeTech() {
   if (!ctx) throw new Error("usePrimeTech deve ser usado dentro de PrimeTechProvider");
   return ctx;
 }
+
