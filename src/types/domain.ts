@@ -43,6 +43,7 @@ export interface Client {
 
 export interface Equipment {
   id: string;
+  technical_number?: number;
   client_id: string;
   category: string;
   brand?: string | null;
@@ -107,7 +108,20 @@ export interface FinancialEntry {
   amount: number;
   occurred_at: string;
   service_order_id?: string | null;
+  payment_method?: string | null;
+  installment_id?: string | null;
 }
+
+export interface PaymentInstallment {
+  id: string; plan_id: string; installment_number: number; installment_count: number;
+  service_order_id?: string | null; type: "income" | "expense"; category: string;
+  description: string; amount: number; due_date: string; payment_method: string; paid_at?: string | null;
+}
+export interface PaymentPlanInput {
+  request_id: string; order_id: string | null; type: "income" | "expense"; category: string;
+  description: string; amount: number; count: number; first_due: string; method: string; paid: boolean;
+}
+export interface OrderHistory { id: string; service_order_id: string; from_status: string; to_status: string; notes: string; changed_at: string; }
 
 export interface CompanySettings {
   id: string;
