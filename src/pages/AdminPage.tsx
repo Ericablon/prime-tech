@@ -91,7 +91,9 @@ export function AdminPage({ permissions = false }: { permissions?: boolean }) {
   }, [company]);
 
   useEffect(() => {
-    if (!permissions || mode !== 'supabase' || !supabase) {
+    const client = supabase;
+
+    if (!permissions || mode !== 'supabase' || !client) {
       setServerMatrix(null);
       return;
     }
@@ -100,7 +102,7 @@ export function AdminPage({ permissions = false }: { permissions?: boolean }) {
 
     const load = async () => {
       setMatrixError('');
-      const { data, error } = await supabase
+      const { data, error } = await client
         .from('role_permissions')
         .select('role_code, permission_code');
 
