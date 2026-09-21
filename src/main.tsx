@@ -9,6 +9,7 @@ import { AuthProvider } from './contexts/AuthContext';
 import { PrimeTechProvider } from './contexts/PrimeTechContext';
 
 import './styles.css';
+import './premium.css';
 
 ReactDOM.createRoot(
   document.getElementById('root')!,
