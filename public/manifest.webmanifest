@@ -1,0 +1,9 @@
+{
+  "name":"Cronos — Gestão de Assistência Técnica",
+  "short_name":"Cronos",
+  "start_url":"/",
+  "display":"standalone",
+  "background_color":"#08101f",
+  "theme_color":"#08101f",
+  "description":"Operação integrada de assistência técnica, do atendimento ao fiscal."
+}

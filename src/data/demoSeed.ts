@@ -1,142 +1,15 @@
-import type {
-  Client,
-  CompanySettings,
-  Equipment,
-  FinancialEntry,
-  ServiceOrder,
-  StockItem,
-} from "../types/domain";
-
-const now = new Date().toISOString();
-
-export const demoCompany: CompanySettings = {
-  id: "company-1",
-  trade_name: "Prime Tech",
-  legal_name: "Prime Tech Tecnologia",
-  document: "",
-  phone: "",
-  whatsapp: "",
-  email: "",
-  address: "",
-  instagram: "@primetech.oficial",
-  logo_url: "/brand/prime-tech-logo.jpeg",
-  budget_validity_days: 7,
-  warranty_text: "Garantia conforme serviço executado e condições descritas na ordem de serviço.",
-  footer_text: "Tecnologia que impulsiona.",
-};
-
-export const demoClients: Client[] = [
-  {
-    id: "c1",
-    person_type: "pf",
-    name: "João da Silva",
-    document: "",
-    phone: "(75) 99999-0001",
-    email: "joao@email.com",
-    address: "Itaberaba/BA",
-    created_at: now,
-  },
-  {
-    id: "c2",
-    person_type: "pj",
-    name: "Comercial Horizonte Ltda",
-    document: "",
-    phone: "(75) 99999-0002",
-    email: "ti@horizonte.com",
-    address: "Itaberaba/BA",
-    created_at: now,
-  },
-];
-
-export const demoEquipment: Equipment[] = [
-  {
-    id: "e1",
-    client_id: "c1",
-    category: "Notebook",
-    brand: "Dell",
-    model: "Inspiron",
-    serial_number: "DEMO-001",
-    accessories: "Carregador",
-    notes: "Marcas leves na tampa.",
-    created_at: now,
-  },
-  {
-    id: "e2",
-    client_id: "c2",
-    category: "Impressora",
-    brand: "Epson",
-    model: "L3250",
-    serial_number: "DEMO-002",
-    accessories: "Cabo de energia",
-    notes: "",
-    created_at: now,
-  },
-];
-
+import type { ServiceOrder, StockItem } from '../types/domain';
 export const demoOrders: ServiceOrder[] = [
-  {
-    id: "o1",
-    order_number: 125,
-    client_id: "c1",
-    equipment_id: "e1",
-    intake_type: "Orçamento",
-    status: "waiting_technician",
-    priority: "normal",
-    reported_issue: "Equipamento não liga.",
-    approval_status: "pending",
-    total_services: 0,
-    total_parts: 0,
-    total_amount: 0,
-    created_at: now,
-    updated_at: now,
-  },
-  {
-    id: "o2",
-    order_number: 126,
-    client_id: "c2",
-    equipment_id: "e2",
-    intake_type: "Manutenção",
-    status: "waiting_customer",
-    priority: "high",
-    reported_issue: "Falha na impressão e atolamento frequente.",
-    diagnosis: "Conjunto de tração necessita manutenção preventiva e substituição de roletes.",
-    approval_status: "pending",
-    estimated_days: 2,
-    total_services: 180,
-    total_parts: 90,
-    total_amount: 270,
-    items: [
-      {
-        id: "i1",
-        service_order_id: "o2",
-        kind: "service",
-        description: "Manutenção preventiva",
-        quantity: 1,
-        unit_price: 180,
-      },
-      {
-        id: "i2",
-        service_order_id: "o2",
-        kind: "part",
-        description: "Kit de roletes",
-        quantity: 1,
-        unit_price: 90,
-        cost_price: 45,
-      },
-    ],
-    created_at: now,
-    updated_at: now,
-  },
+ { id:'os-1048',order_number:1048,client_name:'Comercial Andrade',equipment:'Notebook Dell Latitude',technician:'Carlos Silva',status:'diagnosis',priority:'high',reported_issue:'Não liga após queda de energia',created_at:'2026-09-21T08:10:00-03:00',updated_at:'2026-09-21T09:12:00-03:00',scheduled_at:'2026-09-21T08:30:00-03:00' },
+ { id:'os-1047',order_number:1047,client_name:'Maria Santos',equipment:'Impressora Epson L3250',technician:'Carlos Silva',status:'waiting_part',priority:'normal',reported_issue:'Falha de alimentação de papel',diagnosis:'Kit tracionador desgastado',quote_total:420,created_at:'2026-09-20T10:00:00-03:00',updated_at:'2026-09-21T08:50:00-03:00' },
+ { id:'os-1046',order_number:1046,client_name:'Clínica Horizonte',equipment:'Desktop Lenovo',technician:'Ana Costa',status:'ready_for_commercial',priority:'urgent',reported_issue:'Sistema reiniciando',diagnosis:'SSD com falhas SMART; substituição recomendada',quote_total:650,created_at:'2026-09-20T09:00:00-03:00',updated_at:'2026-09-21T09:05:00-03:00' },
+ { id:'os-1045',order_number:1045,client_name:'João Almeida',equipment:'iPhone 14',technician:'Ana Costa',status:'waiting_customer',priority:'normal',reported_issue:'Tela quebrada',diagnosis:'Troca completa do display',quote_total:1150,created_at:'2026-09-19T14:20:00-03:00',updated_at:'2026-09-20T17:30:00-03:00' },
+ { id:'os-1044',order_number:1044,client_name:'Escritório Lima',equipment:'Notebook Lenovo ThinkPad',technician:'Carlos Silva',status:'in_repair',priority:'high',reported_issue:'Superaquecimento',diagnosis:'Limpeza completa e troca de pasta térmica',quote_total:280,created_at:'2026-09-19T11:00:00-03:00',updated_at:'2026-09-21T07:50:00-03:00' },
+ { id:'os-1043',order_number:1043,client_name:'Mercado Central',equipment:'Desktop Dell Optiplex',technician:'Ana Costa',status:'quality_check',priority:'normal',reported_issue:'Lentidão extrema',diagnosis:'Upgrade SSD e memória',quote_total:890,created_at:'2026-09-18T09:00:00-03:00',updated_at:'2026-09-21T08:15:00-03:00' },
 ];
-
 export const demoStock: StockItem[] = [
-  { id: "s1", sku: "SSD-480", name: "SSD 480 GB", quantity: 8, minimum_quantity: 3, cost_price: 155, sale_price: 220 },
-  { id: "s2", sku: "FONTE-19V", name: "Fonte Notebook 19V", quantity: 3, minimum_quantity: 2, cost_price: 80, sale_price: 145 },
-  { id: "s3", sku: "ROLETE-L3250", name: "Kit rolete Epson L3250", quantity: 1, minimum_quantity: 2, cost_price: 45, sale_price: 90 },
-];
-
-export const demoFinance: FinancialEntry[] = [
-  { id: "f1", type: "income", category: "Serviços", description: "OS #000120", amount: 350, occurred_at: now, service_order_id: null },
-  { id: "f2", type: "income", category: "Peças", description: "Venda de SSD", amount: 220, occurred_at: now, service_order_id: null },
-  { id: "f3", type: "expense", category: "Compras", description: "Reposição de componentes", amount: 180, occurred_at: now, service_order_id: null },
+ {id:'stk-1',sku:'SSD-480-KG',name:'SSD 480 GB',physical:10,reserved:4,minimum:4,cost_price:165,sale_price:290,active:true},
+ {id:'stk-2',sku:'MEM-8-DDR4',name:'Memória 8 GB DDR4',physical:8,reserved:2,minimum:4,cost_price:110,sale_price:190,active:true},
+ {id:'stk-3',sku:'PASTA-5G',name:'Pasta térmica 5 g',physical:3,reserved:1,minimum:5,cost_price:18,sale_price:45,active:true},
+ {id:'stk-4',sku:'KIT-EP-L32',name:'Kit tracionador Epson L32xx',physical:1,reserved:1,minimum:2,cost_price:120,sale_price:220,active:true},
 ];

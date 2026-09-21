@@ -1,15 +1,3 @@
-import { useState } from "react";
-import { useAuth } from "../contexts/AuthContext";
-import { usePrimeTech } from "../contexts/PrimeTechContext";
-import { can } from "../lib/permissions";
-
-export function ClientsPage() {
-  const { user } = useAuth();
-  const { clients, createClient } = usePrimeTech();
-  const [open, setOpen] = useState(false);
-  const [form, setForm] = useState({ person_type: "pf" as "pf" | "pj", name: "", document: "", phone: "", email: "", address: "" });
-  return <div className="space-y-6"><div className="flex items-end justify-between"><div><h1 className="pt-page-title">Clientes</h1><p className="pt-page-subtitle">Cadastro único para histórico de equipamentos e serviços.</p></div>{can(user, "clients.manage") && <button className="pt-btn-primary" onClick={() => setOpen((v) => !v)}>+ Novo cliente</button>}</div>
-    {open && <form className="pt-card grid gap-4 md:grid-cols-2" onSubmit={async (e) => { e.preventDefault(); await createClient(form); setOpen(false); setForm({ person_type: "pf", name: "", document: "", phone: "", email: "", address: "" }); }}><select className="pt-input" value={form.person_type} onChange={(e) => setForm((s) => ({ ...s, person_type: e.target.value as "pf" | "pj" }))}><option value="pf">Pessoa Física</option><option value="pj">Pessoa Jurídica</option></select><input className="pt-input" placeholder="Nome / Razão social" value={form.name} onChange={(e) => setForm((s) => ({ ...s, name: e.target.value }))} required /><input className="pt-input" placeholder="CPF / CNPJ" value={form.document} onChange={(e) => setForm((s) => ({ ...s, document: e.target.value }))} /><input className="pt-input" placeholder="Telefone / WhatsApp" value={form.phone} onChange={(e) => setForm((s) => ({ ...s, phone: e.target.value }))} /><input className="pt-input" placeholder="E-mail" value={form.email} onChange={(e) => setForm((s) => ({ ...s, email: e.target.value }))} /><input className="pt-input" placeholder="Endereço" value={form.address} onChange={(e) => setForm((s) => ({ ...s, address: e.target.value }))} /><div className="md:col-span-2 flex justify-end"><button className="pt-btn-primary">Salvar cliente</button></div></form>}
-    <div className="pt-card overflow-x-auto"><table className="pt-table"><thead><tr><th>Nome</th><th>Tipo</th><th>Telefone</th><th>E-mail</th><th>Endereço</th></tr></thead><tbody>{clients.map((c) => <tr key={c.id}><td className="font-medium">{c.name}</td><td>{c.person_type === "pf" ? "PF" : "PJ"}</td><td>{c.phone || "—"}</td><td>{c.email || "—"}</td><td>{c.address || "—"}</td></tr>)}</tbody></table></div>
-  </div>;
-}
+import { Plus, Search } from 'lucide-react';import { PageHeader } from '../components/ui/PageHeader';
+const clients=[['Comercial Andrade','12.345.678/0001-90','(75) 99999-1122','3 OS'],['Maria Santos','***.***.***-21','(75) 98888-4567','2 OS'],['Clínica Horizonte','45.780.112/0001-03','(75) 3333-8899','8 OS'],['João Almeida','***.***.***-77','(75) 97777-4510','1 OS']];
+export function ClientsPage(){return <><PageHeader eyebrow="CRM" title="Clientes" description="Cadastro único com trava de CPF/CNPJ duplicado por empresa." actions={<button className="primary-button"><Plus/>Novo cliente</button>}/><section className="panel"><div className="filter-search"><Search size={16}/><input placeholder="Buscar cliente"/></div><div className="table-wrap"><table><thead><tr><th>Cliente</th><th>Documento</th><th>Contato</th><th>Histórico</th></tr></thead><tbody>{clients.map(c=><tr key={c[0]}><td><strong>{c[0]}</strong></td><td>{c[1]}</td><td>{c[2]}</td><td>{c[3]}</td></tr>)}</tbody></table></div></section></>}
