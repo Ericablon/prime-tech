@@ -15,6 +15,7 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { usePrimeTech } from '../contexts/PrimeTechContext';
 import { dateTime, orderCode } from '../lib/formatters';
+import { can } from '../lib/permissions';
 import { supabase } from '../lib/supabase';
 import type { ServiceOrder } from '../types/domain';
 
@@ -33,13 +34,15 @@ function inputTime(value?: string | null) {
 }
 
 export function SchedulePage() {
-  const { mode } = useAuth();
+  const { mode, user } = useAuth();
   const { orders, loading, error, refresh } = usePrimeTech();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
   const [saving, setSaving] = useState(false);
   const [localError, setLocalError] = useState('');
+
+  const canSchedule = can(user, 'orders.commercial') || can(user, 'orders.tech');
 
   const openOrders = useMemo(
     () => orders
@@ -64,6 +67,11 @@ export function SchedulePage() {
   }).length;
 
   function openEditor(order: ServiceOrder) {
+    if (!canSchedule) {
+      setLocalError('Seu perfil pode consultar a agenda, mas não pode alterar a programação técnica.');
+      return;
+    }
+
     setEditingId(order.id);
     setDate(inputDate(order.scheduled_at));
     setTime(inputTime(order.scheduled_at) || '08:00');
@@ -71,6 +79,11 @@ export function SchedulePage() {
   }
 
   async function saveSchedule(order: ServiceOrder) {
+    if (!canSchedule) {
+      setLocalError('Seu perfil não possui permissão para alterar a programação técnica.');
+      return;
+    }
+
     if (!date || !time) {
       setLocalError('Informe data e horário da programação.');
       return;
@@ -145,7 +158,7 @@ export function SchedulePage() {
             </div>
             <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
               <CalendarDays className="schedule-icon"/>
-              <button type="button" className="ghost-button" onClick={() => openEditor(order)}><CalendarClock size={15}/> {order.scheduled_at ? 'Reagendar' : 'Programar'}</button>
+              {canSchedule && <button type="button" className="ghost-button" onClick={() => openEditor(order)}><CalendarClock size={15}/> {order.scheduled_at ? 'Reagendar' : 'Programar'}</button>}
               <Link to={`/ordens/${order.id}`} className="ghost-button">Ver OS</Link>
             </div>
           </article>;
