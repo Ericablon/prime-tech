@@ -14,6 +14,11 @@ begin;
 -- 1. Harmonização de permissões
 -- ============================================================
 
+-- A migration precisa complementar permissões de papéis protegidos.
+-- O trigger é religado imediatamente após os grants.
+alter table public.role_permissions
+  disable trigger protect_role_permissions;
+
 insert into public.role_permissions (
   role_code,
   permission_code
@@ -72,6 +77,9 @@ select
   code
 from public.permissions
 on conflict do nothing;
+
+alter table public.role_permissions
+  enable trigger protect_role_permissions;
 
 -- ============================================================
 -- 2. Campos do fluxo técnico
