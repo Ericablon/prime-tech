@@ -10,6 +10,7 @@ import { PrimeTechProvider } from './contexts/PrimeTechContext';
 
 import './styles.css';
 import './premium.css';
+import './login-v2.css';
 
 ReactDOM.createRoot(
   document.getElementById('root')!,
