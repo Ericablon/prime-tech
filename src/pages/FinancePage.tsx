@@ -5,6 +5,7 @@ import {
   Banknote,
   CheckCircle2,
   CircleDollarSign,
+  ListPlus,
   PlusCircle,
   RefreshCw,
   TrendingUp,
@@ -15,7 +16,7 @@ import { type FormEvent, useMemo, useState } from 'react';
 import { MetricCard } from '../components/ui/MetricCard';
 import { PageHeader } from '../components/ui/PageHeader';
 import { usePrimeTech } from '../contexts/PrimeTechContext';
-import { money, paymentMethods, shortDate } from '../lib/formatters';
+import { money, orderCode, paymentMethods, shortDate } from '../lib/formatters';
 
 function isCurrentMonth(value: string) {
   const date = new Date(value);
@@ -27,13 +28,16 @@ export function FinancePage({ dre = false }: { dre?: boolean }) {
   const {
     finance,
     installments,
+    orders,
     loading,
     error,
     addFinancialEntry,
+    createPaymentPlan,
     settleInstallment,
   } = usePrimeTech();
 
   const [showForm, setShowForm] = useState(false);
+  const [showPlanForm, setShowPlanForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [localError, setLocalError] = useState('');
   const [form, setForm] = useState({
@@ -44,6 +48,16 @@ export function FinancePage({ dre = false }: { dre?: boolean }) {
     occurredAt: new Date().toISOString().slice(0, 10),
     method: 'pix',
   });
+  const [planForm, setPlanForm] = useState({
+    type: 'income' as 'income' | 'expense',
+    category: 'Serviços',
+    description: '',
+    amount: '',
+    count: '1',
+    firstDue: new Date().toISOString().slice(0, 10),
+    method: 'pix',
+    orderId: '',
+  });
 
   const monthEntries = useMemo(() => finance.filter((entry) => isCurrentMonth(entry.occurred_at)), [finance]);
   const revenues = monthEntries.filter((entry) => entry.type === 'income').reduce((sum, entry) => sum + Number(entry.amount), 0);
@@ -51,6 +65,13 @@ export function FinancePage({ dre = false }: { dre?: boolean }) {
   const result = revenues - expenses;
   const pendingReceivables = installments.filter((item) => item.type === 'income' && !item.paid_at).reduce((sum, item) => sum + Number(item.amount), 0);
   const pendingPayables = installments.filter((item) => item.type === 'expense' && !item.paid_at).reduce((sum, item) => sum + Number(item.amount), 0);
+
+  const eligibleOrders = useMemo(
+    () => orders.filter((order) =>
+      ['approved', 'in_repair', 'waiting_part', 'quality_check', 'ready_for_pickup', 'delivered'].includes(order.status),
+    ),
+    [orders],
+  );
 
   const dreGroups = useMemo(() => {
     const groups = new Map<string, { income: number; expense: number }>();
@@ -94,6 +115,63 @@ export function FinancePage({ dre = false }: { dre?: boolean }) {
     }
   }
 
+  async function submitPlan(event: FormEvent) {
+    event.preventDefault();
+    const amount = Number(planForm.amount.replace(',', '.'));
+    const count = Number.parseInt(planForm.count, 10);
+
+    if (!planForm.description.trim() || !planForm.category.trim()) {
+      setLocalError('Informe categoria e descrição da conta.');
+      return;
+    }
+
+    if (!Number.isFinite(amount) || amount <= 0) {
+      setLocalError('Informe um valor positivo.');
+      return;
+    }
+
+    if (!Number.isFinite(count) || count < 1 || count > 36) {
+      setLocalError('Informe entre 1 e 36 parcelas.');
+      return;
+    }
+
+    if (!planForm.firstDue) {
+      setLocalError('Informe o primeiro vencimento.');
+      return;
+    }
+
+    setSaving(true);
+    setLocalError('');
+
+    try {
+      await createPaymentPlan({
+        request_id: crypto.randomUUID(),
+        order_id: planForm.orderId || null,
+        type: planForm.type,
+        category: planForm.category.trim(),
+        description: planForm.description.trim(),
+        amount,
+        count,
+        first_due: planForm.firstDue,
+        method: planForm.method,
+        paid: false,
+      });
+
+      setPlanForm((current) => ({
+        ...current,
+        description: '',
+        amount: '',
+        count: '1',
+        orderId: '',
+      }));
+      setShowPlanForm(false);
+    } catch (cause) {
+      setLocalError(cause instanceof Error ? cause.message : 'Não foi possível criar o parcelamento.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
   async function settle(id: string) {
     setSaving(true);
     setLocalError('');
@@ -126,14 +204,34 @@ export function FinancePage({ dre = false }: { dre?: boolean }) {
     <PageHeader
       eyebrow="Financeiro"
       title="Visão financeira"
-      description="Caixa realizado, contas a receber/pagar e baixas de parcelas no mesmo painel."
-      actions={<button className="primary-button" type="button" onClick={() => setShowForm((value) => !value)}>{showForm ? <X/> : <PlusCircle/>}{showForm ? 'Fechar' : 'Novo lançamento'}</button>}
+      description="Caixa realizado, contas a receber/pagar, parcelamentos e baixas no mesmo painel."
+      actions={<div className="quick-actions">
+        <button className="ghost-button" type="button" onClick={() => { setShowPlanForm((value) => !value); setShowForm(false); }}><ListPlus/>{showPlanForm ? 'Fechar conta' : 'Nova conta'}</button>
+        <button className="primary-button" type="button" onClick={() => { setShowForm((value) => !value); setShowPlanForm(false); }}>{showForm ? <X/> : <PlusCircle/>}{showForm ? 'Fechar' : 'Novo lançamento'}</button>
+      </div>}
     />
 
     {(error || localError) && <section className="notice" style={{ marginBottom: 16 }}><AlertTriangle size={20}/><div><strong>Não foi possível concluir a operação</strong><p>{localError || error}</p></div></section>}
 
+    {showPlanForm && <section className="panel" style={{ marginBottom: 20 }}>
+      <div className="panel-head"><div><span className="eyebrow">Contas</span><h2>Nova conta / parcelamento</h2></div></div>
+      <form onSubmit={(event) => void submitPlan(event)} style={{ display: 'grid', gap: 12 }}>
+        <div className="form-grid">
+          <label><span>Tipo</span><select value={planForm.type} onChange={(e) => setPlanForm((v) => ({ ...v, type: e.target.value as 'income' | 'expense' }))}><option value="income">Conta a receber</option><option value="expense">Conta a pagar</option></select></label>
+          <label><span>OS vinculada (opcional)</span><select value={planForm.orderId} onChange={(e) => setPlanForm((v) => ({ ...v, orderId: e.target.value }))}><option value="">Sem OS</option>{eligibleOrders.map((order) => <option key={order.id} value={order.id}>{orderCode(order.order_number)} · {order.client_name ?? 'Cliente'}</option>)}</select></label>
+          <label><span>Categoria</span><input value={planForm.category} onChange={(e) => setPlanForm((v) => ({ ...v, category: e.target.value }))}/></label>
+          <label><span>Descrição</span><input value={planForm.description} onChange={(e) => setPlanForm((v) => ({ ...v, description: e.target.value }))}/></label>
+          <label><span>Valor total</span><input type="number" min="0.01" step="0.01" value={planForm.amount} onChange={(e) => setPlanForm((v) => ({ ...v, amount: e.target.value }))}/></label>
+          <label><span>Parcelas</span><input type="number" min="1" max="36" step="1" value={planForm.count} onChange={(e) => setPlanForm((v) => ({ ...v, count: e.target.value }))}/></label>
+          <label><span>Primeiro vencimento</span><input type="date" value={planForm.firstDue} onChange={(e) => setPlanForm((v) => ({ ...v, firstDue: e.target.value }))}/></label>
+          <label><span>Forma de pagamento</span><select value={planForm.method} onChange={(e) => setPlanForm((v) => ({ ...v, method: e.target.value }))}>{Object.entries(paymentMethods).map(([value, label]) => <option key={value} value={value}>{label}</option>)}</select></label>
+        </div>
+        <div className="quick-actions"><button type="submit" disabled={saving}><ListPlus size={16}/> {saving ? 'Criando...' : 'Criar conta'}</button><button type="button" className="ghost-button" disabled={saving} onClick={() => setShowPlanForm(false)}>Cancelar</button></div>
+      </form>
+    </section>}
+
     {showForm && <section className="panel" style={{ marginBottom: 20 }}>
-      <div className="panel-head"><div><span className="eyebrow">Caixa</span><h2>Novo lançamento</h2></div></div>
+      <div className="panel-head"><div><span className="eyebrow">Caixa</span><h2>Novo lançamento realizado</h2></div></div>
       <form onSubmit={(event) => void submit(event)} style={{ display: 'grid', gap: 12 }}>
         <div className="form-grid">
           <label><span>Tipo</span><select value={form.type} onChange={(e) => setForm((v) => ({ ...v, type: e.target.value as 'income' | 'expense' }))}><option value="income">Receita</option><option value="expense">Despesa</option></select></label>
