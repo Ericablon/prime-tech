@@ -13,6 +13,11 @@ insert into public.permissions(code,name) values
  ('users.manage','Gerenciar usuários'),('permissions.manage','Gerenciar permissões'),('settings.manage','Gerenciar configurações'),('audit.view','Visualizar auditoria')
 on conflict(code) do nothing;
 
+-- Durante a migration precisamos atualizar os papéis protegidos.
+-- A proteção volta a ser ativada logo após os grants.
+alter table public.role_permissions
+  disable trigger protect_role_permissions;
+
 -- Default grants. Customize per tenant later with a role template layer if needed.
 insert into public.role_permissions(role_code,permission_code)
 select 'comercial',code from public.permissions where code in ('dashboard.view','clients.view','equipment.view','orders.view','orders.commercial','orders.approve','stock.view') on conflict do nothing;
@@ -26,6 +31,9 @@ insert into public.role_permissions(role_code,permission_code)
 select 'admin',code from public.permissions on conflict do nothing;
 insert into public.role_permissions(role_code,permission_code)
 select 'gestor',code from public.permissions on conflict do nothing;
+
+alter table public.role_permissions
+  enable trigger protect_role_permissions;
 
 create or replace function private.has_company_access(p_company uuid)
 returns boolean language sql stable security definer set search_path=public as $$
