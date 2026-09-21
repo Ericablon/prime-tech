@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 
 import { useEffect, useState } from 'react';
-import { NavLink, useLocation } from 'react-router-dom';
+import { NavLink, useLocation, useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../../contexts/AuthContext';
 import { brandLogo } from '../../lib/brand';
@@ -108,6 +108,7 @@ export function Sidebar({
 }: SidebarProps) {
   const { user } = useAuth();
   const location = useLocation();
+  const navigate = useNavigate();
   const [open, setOpen] = useState<Record<string, boolean>>({});
   const [logoFallback, setLogoFallback] = useState(false);
 
@@ -151,7 +152,8 @@ export function Sidebar({
           title={collapsed ? group.label : undefined}
           onClick={() => {
             if (collapsed && allowedChildren[0]) {
-              window.location.assign(allowedChildren[0].to);
+              navigate(allowedChildren[0].to);
+              onNavigate?.();
               return;
             }
 
