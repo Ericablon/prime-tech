@@ -8,7 +8,11 @@ import {
 } from 'react';
 
 import { isSupabaseConfigured, supabase } from '../lib/supabase';
-import type { RoleCode, UserProfile } from '../types/domain';
+import type {
+  Permission,
+  RoleCode,
+  UserProfile,
+} from '../types/domain';
 
 interface AuthValue {
   user: UserProfile | null;
@@ -89,8 +93,65 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           throw profileError;
         }
 
+        let resolved = profile as UserProfile;
+
+        try {
+          const { data: access, error: accessError } = await client
+            .from('user_company_access')
+            .select('company_id, branch_id, role_code')
+            .eq('user_id', authUser.id)
+            .eq('active', true)
+            .order('company_id')
+            .limit(1)
+            .maybeSingle();
+
+          if (accessError) {
+            throw accessError;
+          }
+
+          if (access?.company_id && access?.role_code) {
+            const roleCode = access.role_code as RoleCode;
+
+            const [permissionsResult, companyResult] = await Promise.all([
+              client
+                .from('role_permissions')
+                .select('permission_code')
+                .eq('role_code', roleCode),
+              client
+                .from('companies')
+                .select('organization_id')
+                .eq('id', access.company_id)
+                .maybeSingle(),
+            ]);
+
+            if (permissionsResult.error) {
+              throw permissionsResult.error;
+            }
+
+            const permissions = (permissionsResult.data ?? []).map(
+              (row) => String(row.permission_code) as Permission,
+            );
+
+            resolved = {
+              ...resolved,
+              role_code: roleCode,
+              company_id: String(access.company_id),
+              branch_id: access.branch_id ? String(access.branch_id) : undefined,
+              organization_id: companyResult.data?.organization_id
+                ? String(companyResult.data.organization_id)
+                : undefined,
+              permissions,
+            };
+          }
+        } catch (tenantError) {
+          console.warn(
+            'Sessão carregada em modo de compatibilidade sem contexto tenant:',
+            tenantError,
+          );
+        }
+
         if (alive) {
-          setUser(profile as UserProfile);
+          setUser(resolved);
           setLoading(false);
         }
       } catch (error) {
