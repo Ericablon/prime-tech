@@ -84,6 +84,11 @@ const groups: Group[] = [
         label: 'Programação técnica',
         permission: 'orders.view',
       },
+      {
+        to: '/limpeza-tecnica',
+        label: 'Limpeza técnica',
+        permission: 'orders.tech',
+      },
     ],
   },
 
