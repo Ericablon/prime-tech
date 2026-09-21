@@ -300,18 +300,21 @@ export interface StockItem {
   name: string;
 
   /**
-   * Modelo original do banco.
+   * Campos originais do banco.
+   * Podem não existir em objetos legados.
    */
   quantity?: number;
   reserved_quantity?: number;
   minimum_quantity?: number;
 
   /**
-   * Modelo usado pelo layout v0.3.
+   * Modelo normalizado usado pela interface do Cronos.
+   * Estes valores sempre existem após a normalização
+   * realizada pelo PrimeTechContext.
    */
-  physical?: number;
-  reserved?: number;
-  minimum?: number;
+  physical: number;
+  reserved: number;
+  minimum: number;
 
   cost_price: number;
   sale_price: number;
