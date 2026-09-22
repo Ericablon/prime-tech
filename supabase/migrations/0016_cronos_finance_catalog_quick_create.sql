@@ -1,12 +1,98 @@
 -- CRONOS / Prime Tech — catálogo financeiro dinâmico + vínculos em lançamentos/parcelas
 -- Aplicar APÓS 0015_cronos_custom_profile_storage_policies.sql
--- Esta migration também recria a base mínima do catálogo financeiro caso a 0007
--- não tenha criado essas estruturas neste ambiente.
+-- Compatível com bases em que partes das migrations 0002/0005/0007 não foram aplicadas.
 
 begin;
 
 -- ============================================================================
--- 1) GARANTE O CATÁLOGO FINANCEIRO
+-- 1) GARANTE A BASE FINANCEIRA LEGADA / TENANT
+-- ============================================================================
+
+-- O Cronos antigo já pode ter payment_installments, porém sem company_id.
+-- Se a tabela não existir, cria a estrutura mínima usada pelo frontend atual.
+create table if not exists public.payment_installments (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid references public.companies(id) on delete restrict,
+  plan_id uuid not null,
+  installment_number integer not null,
+  installment_count integer not null check (installment_count between 1 and 36),
+  service_order_id uuid references public.service_orders(id) on delete restrict,
+  type text not null check (type in ('income','expense')),
+  category text not null,
+  description text not null,
+  amount numeric(12,2) not null check (amount > 0),
+  due_date date not null,
+  payment_method text not null,
+  paid_at timestamptz,
+  created_by uuid references public.profiles(id),
+  created_at timestamptz not null default now(),
+  unique (plan_id, installment_number),
+  check (installment_number between 1 and installment_count)
+);
+
+-- Garante colunas tenant/financeiras antes de qualquer UPDATE que as utilize.
+alter table public.financial_entries
+  add column if not exists company_id uuid references public.companies(id),
+  add column if not exists installment_id uuid;
+
+alter table public.payment_installments
+  add column if not exists company_id uuid references public.companies(id) on delete restrict;
+
+-- Backfill tenant a partir da OS vinculada.
+update public.financial_entries f
+set company_id = so.company_id
+from public.service_orders so
+where f.company_id is null
+  and f.service_order_id = so.id
+  and so.company_id is not null;
+
+update public.payment_installments p
+set company_id = so.company_id
+from public.service_orders so
+where p.company_id is null
+  and p.service_order_id = so.id
+  and so.company_id is not null;
+
+-- Para registros sem OS, só associa automaticamente quando o criador pertence
+-- a exatamente uma empresa ativa. Casos ambíguos permanecem sem tenant.
+update public.financial_entries f
+set company_id = (
+  select u.company_id
+  from public.user_company_access u
+  where u.user_id = f.created_by
+    and u.active = true
+  order by u.company_id
+  limit 1
+)
+where f.company_id is null
+  and f.created_by is not null
+  and 1 = (
+    select count(distinct u.company_id)
+    from public.user_company_access u
+    where u.user_id = f.created_by
+      and u.active = true
+  );
+
+update public.payment_installments p
+set company_id = (
+  select u.company_id
+  from public.user_company_access u
+  where u.user_id = p.created_by
+    and u.active = true
+  order by u.company_id
+  limit 1
+)
+where p.company_id is null
+  and p.created_by is not null
+  and 1 = (
+    select count(distinct u.company_id)
+    from public.user_company_access u
+    where u.user_id = p.created_by
+      and u.active = true
+  );
+
+-- ============================================================================
+-- 2) CATÁLOGO DE CONTAS E CATEGORIAS
 -- ============================================================================
 
 create table if not exists public.financial_accounts (
@@ -82,6 +168,28 @@ alter table public.payment_installments
   add column if not exists account_id uuid references public.financial_accounts(id) on delete set null,
   add column if not exists competence_date date;
 
+-- FK de installment_id pode não existir em instalações antigas.
+do $$
+begin
+  if not exists (
+    select 1
+    from pg_constraint
+    where conname = 'financial_entries_installment_id_fkey'
+      and conrelid = 'public.financial_entries'::regclass
+  ) then
+    alter table public.financial_entries
+      add constraint financial_entries_installment_id_fkey
+      foreign key (installment_id)
+      references public.payment_installments(id)
+      on delete restrict;
+  end if;
+end $$;
+
+create unique index if not exists uq_financial_entries_installment
+on public.financial_entries(installment_id)
+where installment_id is not null;
+
+-- Define conta padrão e tenta mapear categorias legadas pelo nome.
 update public.financial_entries f
 set account_id = (
   select fa.id
@@ -135,6 +243,10 @@ create index if not exists idx_financial_entries_category
 create index if not exists idx_payment_installments_company_due
   on public.payment_installments(company_id, due_date, type, paid_at);
 
+-- ============================================================================
+-- 3) SINCRONIZA NOME DA CATEGORIA
+-- ============================================================================
+
 create or replace function public.sync_financial_category_name()
 returns trigger
 language plpgsql
@@ -181,8 +293,18 @@ before insert or update of category_id, company_id, type
 on public.payment_installments
 for each row execute function public.sync_financial_category_name();
 
+-- ============================================================================
+-- 4) RLS / GRANTS
+-- ============================================================================
+
 alter table public.financial_accounts enable row level security;
 alter table public.financial_categories enable row level security;
+alter table public.payment_installments enable row level security;
+
+grant select, insert, update, delete on public.financial_accounts to authenticated;
+grant select, insert, update, delete on public.financial_categories to authenticated;
+grant select, insert, update on public.payment_installments to authenticated;
+revoke all on public.financial_accounts, public.financial_categories, public.payment_installments from anon;
 
 drop policy if exists financial_accounts_read on public.financial_accounts;
 create policy financial_accounts_read
@@ -206,7 +328,34 @@ on public.financial_categories for all to authenticated
 using (private.has_company_permission(company_id, 'finance.manage'))
 with check (private.has_company_permission(company_id, 'finance.manage'));
 
--- Garante o resumo DRE mesmo em ambientes que não receberam integralmente a 0007.
+drop policy if exists installments_read on public.payment_installments;
+drop policy if exists installments_create on public.payment_installments;
+drop policy if exists installments_update on public.payment_installments;
+drop policy if exists installments_tenant_read on public.payment_installments;
+drop policy if exists installments_tenant_insert on public.payment_installments;
+drop policy if exists installments_tenant_update on public.payment_installments;
+
+create policy installments_tenant_read
+on public.payment_installments for select to authenticated
+using (company_id is not null and private.has_company_permission(company_id, 'finance.view'));
+
+create policy installments_tenant_insert
+on public.payment_installments for insert to authenticated
+with check (
+  company_id is not null
+  and created_by = auth.uid()
+  and private.has_company_permission(company_id, 'finance.manage')
+);
+
+create policy installments_tenant_update
+on public.payment_installments for update to authenticated
+using (company_id is not null and private.has_company_permission(company_id, 'finance.manage'))
+with check (company_id is not null and private.has_company_permission(company_id, 'finance.manage'));
+
+-- ============================================================================
+-- 5) DRE
+-- ============================================================================
+
 create or replace function public.financial_dre_summary(
   p_company uuid,
   p_start date,
@@ -275,7 +424,7 @@ revoke all on function public.financial_dre_summary(uuid,date,date) from public,
 grant execute on function public.financial_dre_summary(uuid,date,date) to authenticated;
 
 -- ============================================================================
--- 2) FORMAS DE PAGAMENTO
+-- 6) FORMAS DE PAGAMENTO E BAIXA DE PARCELA
 -- ============================================================================
 
 alter table public.payment_installments
@@ -286,10 +435,6 @@ alter table public.payment_installments
   check (payment_method in (
     'cash','pix','credit_card','debit_card','boleto','transfer','store_credit','check','other'
   ));
-
--- ============================================================================
--- 3) BAIXA DE PARCELA -> REALIZADO
--- ============================================================================
 
 create or replace function private.post_installment()
 returns trigger
@@ -342,15 +487,13 @@ revoke all on function private.post_installment() from public, anon;
 
 drop trigger if exists post_installment on public.payment_installments;
 create trigger post_installment
-after insert or update
-on public.payment_installments
+after insert or update on public.payment_installments
 for each row execute function private.post_installment();
 
 -- ============================================================================
--- 4) PLANO DE PAGAMENTO COM CATEGORIA/CONTA
+-- 7) PLANO DE PAGAMENTO COM CATEGORIA / CONTA
 -- ============================================================================
 
--- Remove a assinatura anterior para o PostgREST não encontrar overload ambíguo.
 drop function if exists public.create_payment_plan(
   uuid, uuid, text, text, text, numeric, integer, date, text, boolean
 );
@@ -391,7 +534,7 @@ begin
     raise exception 'Identificador obrigatório';
   end if;
 
-  if p_type not in ('income', 'expense') then
+  if p_type not in ('income','expense') then
     raise exception 'Tipo financeiro inválido';
   end if;
 
@@ -526,8 +669,7 @@ begin
       payment_method,
       paid_at,
       created_by
-    )
-    values (
+    ) values (
       v_company,
       p_request_id,
       v_n,
