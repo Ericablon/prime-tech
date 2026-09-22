@@ -1,5 +1,5 @@
 import type { ReactNode } from 'react';
-import { Navigate, Route, Routes } from 'react-router-dom';
+import { Navigate, Outlet, Route, Routes } from 'react-router-dom';
 
 import { AppShell } from './components/layout/AppShell';
 import { useAuth } from './contexts/AuthContext';
@@ -28,47 +28,63 @@ import { TechnicalCleaningPage } from './pages/TechnicalCleaningPage';
 import { TechnicalSpecialtiesPage } from './pages/TechnicalSpecialtiesPage';
 import { TechnicianPage } from './pages/TechnicianPage';
 
-function Guard({
-  permission,
-  children,
-}: {
-  permission?: Permission;
-  children: ReactNode;
-}) {
+function ProtectedLayout() {
   const { user, loading } = useAuth();
 
   if (loading) return <div className="loading">Carregando...</div>;
   if (!user) return <Navigate to="/login" replace />;
-  if (permission && !can(user, permission)) return <Navigate to="/" replace />;
 
-  return <AppShell>{children}</AppShell>;
+  return (
+    <AppShell>
+      <Outlet />
+    </AppShell>
+  );
+}
+
+function PermissionGuard({
+  permission,
+  children,
+}: {
+  permission: Permission;
+  children: ReactNode;
+}) {
+  const { user } = useAuth();
+
+  if (!user) return <Navigate to="/login" replace />;
+  if (!can(user, permission)) return <Navigate to="/" replace />;
+
+  return <>{children}</>;
 }
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/" element={<Guard><DashboardPage /></Guard>} />
-      <Route path="/clientes" element={<Guard permission="clients.view"><ClientsPage /></Guard>} />
-      <Route path="/equipamentos" element={<Guard permission="equipment.view"><EquipmentPage /></Guard>} />
-      <Route path="/ordens" element={<Guard permission="orders.view"><OrdersPage /></Guard>} />
-      <Route path="/ordens/nova" element={<Guard permission="orders.create"><NewOrderPage /></Guard>} />
-      <Route path="/ordens/:id/itens" element={<Guard permission="orders.view"><OrderItemsPage /></Guard>} />
-      <Route path="/ordens/:id" element={<Guard permission="orders.view"><OrderDetailPage /></Guard>} />
-      <Route path="/tecnico" element={<Guard permission="orders.tech"><TechnicianPage /></Guard>} />
-      <Route path="/agenda" element={<Guard permission="orders.view"><SchedulePage /></Guard>} />
-      <Route path="/limpeza-tecnica" element={<Guard permission="orders.tech"><TechnicalCleaningPage /></Guard>} />
-      <Route path="/comercial" element={<Guard permission="orders.commercial"><CommercialPage /></Guard>} />
-      <Route path="/estoque" element={<Guard permission="stock.view"><StockPage /></Guard>} />
-      <Route path="/estoque/movimentacoes" element={<Guard permission="stock.view"><StockHistoryPage /></Guard>} />
-      <Route path="/financeiro" element={<Guard permission="finance.view"><FinancialHubPage /></Guard>} />
-      <Route path="/financeiro/dre" element={<Guard permission="finance.dre"><DrePage /></Guard>} />
-      <Route path="/fiscal" element={<Guard permission="fiscal.view"><FiscalPage /></Guard>} />
-      <Route path="/fiscal/configuracao" element={<Guard permission="fiscal.settings"><FiscalSettingsPage /></Guard>} />
-      <Route path="/relatorios" element={<Guard permission="reports.view"><ReportsPage /></Guard>} />
-      <Route path="/administracao" element={<Guard permission="settings.manage"><AdminPage /></Guard>} />
-      <Route path="/administracao/especialidades" element={<Guard permission="settings.manage"><TechnicalSpecialtiesPage /></Guard>} />
-      <Route path="/administracao/permissoes" element={<Guard permission="permissions.manage"><AdminPage permissions /></Guard>} />
+
+      <Route path="/" element={<ProtectedLayout />}>
+        <Route index element={<DashboardPage />} />
+        <Route path="clientes" element={<PermissionGuard permission="clients.view"><ClientsPage /></PermissionGuard>} />
+        <Route path="equipamentos" element={<PermissionGuard permission="equipment.view"><EquipmentPage /></PermissionGuard>} />
+        <Route path="ordens" element={<PermissionGuard permission="orders.view"><OrdersPage /></PermissionGuard>} />
+        <Route path="ordens/nova" element={<PermissionGuard permission="orders.create"><NewOrderPage /></PermissionGuard>} />
+        <Route path="ordens/:id/itens" element={<PermissionGuard permission="orders.view"><OrderItemsPage /></PermissionGuard>} />
+        <Route path="ordens/:id" element={<PermissionGuard permission="orders.view"><OrderDetailPage /></PermissionGuard>} />
+        <Route path="tecnico" element={<PermissionGuard permission="orders.tech"><TechnicianPage /></PermissionGuard>} />
+        <Route path="agenda" element={<PermissionGuard permission="orders.view"><SchedulePage /></PermissionGuard>} />
+        <Route path="limpeza-tecnica" element={<PermissionGuard permission="orders.tech"><TechnicalCleaningPage /></PermissionGuard>} />
+        <Route path="comercial" element={<PermissionGuard permission="orders.commercial"><CommercialPage /></PermissionGuard>} />
+        <Route path="estoque" element={<PermissionGuard permission="stock.view"><StockPage /></PermissionGuard>} />
+        <Route path="estoque/movimentacoes" element={<PermissionGuard permission="stock.view"><StockHistoryPage /></PermissionGuard>} />
+        <Route path="financeiro" element={<PermissionGuard permission="finance.view"><FinancialHubPage /></PermissionGuard>} />
+        <Route path="financeiro/dre" element={<PermissionGuard permission="finance.dre"><DrePage /></PermissionGuard>} />
+        <Route path="fiscal" element={<PermissionGuard permission="fiscal.view"><FiscalPage /></PermissionGuard>} />
+        <Route path="fiscal/configuracao" element={<PermissionGuard permission="fiscal.settings"><FiscalSettingsPage /></PermissionGuard>} />
+        <Route path="relatorios" element={<PermissionGuard permission="reports.view"><ReportsPage /></PermissionGuard>} />
+        <Route path="administracao" element={<PermissionGuard permission="settings.manage"><AdminPage /></PermissionGuard>} />
+        <Route path="administracao/especialidades" element={<PermissionGuard permission="settings.manage"><TechnicalSpecialtiesPage /></PermissionGuard>} />
+        <Route path="administracao/permissoes" element={<PermissionGuard permission="permissions.manage"><AdminPage permissions /></PermissionGuard>} />
+      </Route>
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
