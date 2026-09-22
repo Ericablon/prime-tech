@@ -5,6 +5,7 @@ import {
   CircleDollarSign,
   Clock3,
   MessageSquareText,
+  PackagePlus,
   PhoneCall,
   Send,
   XCircle,
@@ -99,7 +100,7 @@ export function CommercialPage() {
     <PageHeader
       eyebrow="Comercial"
       title="Funil de orçamentos"
-      description="Diagnóstico técnico, orçamento, follow-up e decisão do cliente em um único fluxo."
+      description="Diagnóstico técnico, serviços, produtos do estoque, follow-up e decisão do cliente em um único fluxo."
     />
 
     {(error || localError) && <section className="notice" style={{ marginBottom: 16 }}>
@@ -136,6 +137,7 @@ export function CommercialPage() {
             <div className="commercial-right">
               <StatusBadge status={order.status}/>
               <strong>{amount > 0 ? money.format(amount) : 'Orçamento sem valor'}</strong>
+              <Link to={`/ordens/${order.id}/itens`} className="ghost-button"><PackagePlus size={15}/> Itens / orçamento</Link>
               <Link to={`/ordens/${order.id}`} className="ghost-button">Abrir OS</Link>
               {!waiting && <button className="primary-button small" disabled={saving} onClick={() => void move(order, 'waiting_customer', 'Orçamento enviado ao cliente pelo Comercial.')}><Send size={15}/> Enviar orçamento</button>}
               {waiting && <>
