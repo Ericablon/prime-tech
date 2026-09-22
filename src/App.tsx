@@ -17,9 +17,11 @@ import { FiscalPage } from './pages/FiscalPage';
 import { LoginPage } from './pages/LoginPage';
 import { NewOrderPage } from './pages/NewOrderPage';
 import { OrderDetailPage } from './pages/OrderDetailPage';
+import { OrderItemsPage } from './pages/OrderItemsPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { ReportsPage } from './pages/ReportsPage';
 import { SchedulePage } from './pages/SchedulePage';
+import { StockHistoryPage } from './pages/StockHistoryPage';
 import { StockPage } from './pages/StockPage';
 import { TechnicalCleaningPage } from './pages/TechnicalCleaningPage';
 import { TechnicalSpecialtiesPage } from './pages/TechnicalSpecialtiesPage';
@@ -50,12 +52,14 @@ export default function App() {
       <Route path="/equipamentos" element={<Guard permission="equipment.view"><EquipmentPage /></Guard>} />
       <Route path="/ordens" element={<Guard permission="orders.view"><OrdersPage /></Guard>} />
       <Route path="/ordens/nova" element={<Guard permission="orders.create"><NewOrderPage /></Guard>} />
+      <Route path="/ordens/:id/itens" element={<Guard permission="orders.view"><OrderItemsPage /></Guard>} />
       <Route path="/ordens/:id" element={<Guard permission="orders.view"><OrderDetailPage /></Guard>} />
       <Route path="/tecnico" element={<Guard permission="orders.tech"><TechnicianPage /></Guard>} />
       <Route path="/agenda" element={<Guard permission="orders.view"><SchedulePage /></Guard>} />
       <Route path="/limpeza-tecnica" element={<Guard permission="orders.tech"><TechnicalCleaningPage /></Guard>} />
       <Route path="/comercial" element={<Guard permission="orders.commercial"><CommercialPage /></Guard>} />
       <Route path="/estoque" element={<Guard permission="stock.view"><StockPage /></Guard>} />
+      <Route path="/estoque/movimentacoes" element={<Guard permission="stock.view"><StockHistoryPage /></Guard>} />
       <Route path="/financeiro" element={<Guard permission="finance.view"><FinancialHubPage /></Guard>} />
       <Route path="/financeiro/dre" element={<Guard permission="finance.dre"><DrePage /></Guard>} />
       <Route path="/fiscal" element={<Guard permission="fiscal.view"><FiscalPage /></Guard>} />
