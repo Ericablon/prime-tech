@@ -1,0 +1,59 @@
+/* Cronos — operação técnica mobile/PWA */
+.flow-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:12px; }
+.compact-notice { margin-top:12px !important; margin-bottom:0 !important; }
+.technician-action-panel { margin-top:16px; padding:16px !important; }
+.technician-action-panel > label { display:grid; gap:7px; margin-top:14px; }
+.technician-action-panel input,
+.technician-action-panel select,
+.technician-action-panel textarea { width:100%; }
+.camera-upload {
+  min-height:130px;
+  padding:18px;
+  place-items:center;
+  text-align:center;
+  border:1px dashed rgba(83,155,255,.45);
+  border-radius:16px;
+  background:rgba(47,140,255,.07);
+  cursor:pointer;
+}
+.camera-upload svg { color:var(--blue2); }
+.camera-upload small { color:var(--muted); font-size:11px; }
+.camera-upload input { width:100%; margin-top:8px; }
+.tech-photo-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:10px; margin-top:16px; }
+.tech-photo-card { overflow:hidden; display:grid; gap:6px; border:1px solid var(--line); border-radius:12px; background:#0a1728; color:#dce9f8; text-decoration:none; }
+.tech-photo-card img { width:100%; aspect-ratio:4/3; object-fit:cover; display:block; }
+.tech-photo-card span { padding:0 9px 9px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; }
+
+@media (max-width: 820px) {
+  .flow-grid { grid-template-columns:1fr; }
+  .technician-mobile-list { gap:14px; }
+  .technician-work-card { padding:15px !important; border-radius:17px !important; }
+  .technician-work-card.active { border-color:rgba(71,151,255,.5) !important; box-shadow:0 0 0 3px rgba(47,140,255,.06); }
+  .technician-work-card .work-card-top { align-items:flex-start; gap:10px; }
+  .technician-work-card .work-card-top h3 { font-size:17px; line-height:1.25; }
+  .technician-work-card .work-meta { display:grid; gap:8px; }
+  .technician-actions { display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)); gap:9px !important; }
+  .technician-actions > button,
+  .technician-actions > a { width:100%; min-height:48px; justify-content:center; padding:10px 8px !important; font-size:12px; }
+  .technician-action-panel { margin-inline:-5px; padding:14px !important; border-radius:15px !important; }
+  .technician-action-panel h3 { font-size:18px; }
+  .technician-action-panel input,
+  .technician-action-panel select,
+  .technician-action-panel textarea { min-height:48px; font-size:16px !important; }
+  .technician-action-panel textarea { min-height:110px; }
+  .technician-form-actions { display:grid !important; grid-template-columns:1fr; gap:9px !important; }
+  .technician-form-actions > button { width:100%; min-height:50px; justify-content:center; }
+  .camera-upload { min-height:145px; }
+  .tech-photo-grid { grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .tech-summary-mobile { display:grid !important; grid-template-columns:repeat(2,minmax(0,1fr)) !important; gap:10px !important; }
+  .tech-summary-mobile article { min-height:78px; padding:12px !important; }
+  .tech-summary-mobile article strong { font-size:20px; }
+}
+
+@media (max-width: 520px) {
+  .technician-actions { grid-template-columns:1fr; }
+  .tech-photo-grid { grid-template-columns:1fr 1fr; }
+  .premium-content { padding-left:12px !important; padding-right:12px !important; }
+  .premium-content .page-header { min-height:auto !important; padding:19px 17px !important; border-radius:16px !important; }
+  .premium-content .page-header h1 { font-size:27px !important; }
+}
