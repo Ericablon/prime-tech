@@ -21,22 +21,12 @@ import { brandLogo } from '../../lib/brand';
 import { can } from '../../lib/permissions';
 import type { Permission } from '../../types/domain';
 
-type Child = {
-  to: string;
-  label: string;
-  permission: Permission;
-};
-
-type Group = {
-  label: string;
-  icon: typeof Gauge;
-  children: Child[];
-};
+type Child = { to: string; label: string; permission: Permission };
+type Group = { label: string; icon: typeof Gauge; children: Child[] };
 
 const groups: Group[] = [
   {
-    label: 'Comercial',
-    icon: BriefcaseBusiness,
+    label: 'Comercial', icon: BriefcaseBusiness,
     children: [
       { to: '/comercial', label: 'Visão comercial', permission: 'orders.commercial' },
       { to: '/clientes', label: 'Clientes', permission: 'clients.view' },
@@ -46,8 +36,7 @@ const groups: Group[] = [
     ],
   },
   {
-    label: 'Operação Técnica',
-    icon: Laptop,
+    label: 'Operação Técnica', icon: Laptop,
     children: [
       { to: '/tecnico', label: 'Meu painel', permission: 'orders.tech' },
       { to: '/agenda', label: 'Programação técnica', permission: 'orders.view' },
@@ -55,60 +44,44 @@ const groups: Group[] = [
     ],
   },
   {
-    label: 'Estoque',
-    icon: Boxes,
+    label: 'Estoque', icon: Boxes,
     children: [
       { to: '/estoque', label: 'Peças e materiais', permission: 'stock.view' },
       { to: '/estoque/movimentacoes', label: 'Movimentações', permission: 'stock.view' },
     ],
   },
   {
-    label: 'Financeiro',
-    icon: CircleDollarSign,
+    label: 'Financeiro', icon: CircleDollarSign,
     children: [
       { to: '/financeiro', label: 'Gestão financeira', permission: 'finance.view' },
       { to: '/financeiro/dre', label: 'DRE gerencial', permission: 'finance.dre' },
     ],
   },
   {
-    label: 'Fiscal',
-    icon: FileText,
+    label: 'Fiscal', icon: FileText,
     children: [
       { to: '/fiscal', label: 'Painel fiscal / NF', permission: 'fiscal.view' },
       { to: '/fiscal/configuracao', label: 'Configuração fiscal', permission: 'fiscal.settings' },
     ],
   },
   {
-    label: 'Relatórios',
-    icon: BarChart3,
-    children: [
-      { to: '/relatorios', label: 'Indicadores e PDF', permission: 'reports.view' },
-    ],
+    label: 'Relatórios', icon: BarChart3,
+    children: [{ to: '/relatorios', label: 'Indicadores e PDF', permission: 'reports.view' }],
   },
   {
-    label: 'Administração',
-    icon: Settings,
+    label: 'Administração', icon: Settings,
     children: [
       { to: '/administracao', label: 'Configurações', permission: 'settings.manage' },
+      { to: '/administracao/usuarios', label: 'Usuários e acessos', permission: 'users.manage' },
       { to: '/administracao/especialidades', label: 'Especialidades técnicas', permission: 'settings.manage' },
       { to: '/administracao/permissoes', label: 'Perfis e permissões', permission: 'permissions.manage' },
     ],
   },
 ];
 
-interface SidebarProps {
-  mobile?: boolean;
-  collapsed?: boolean;
-  onNavigate?: () => void;
-  onToggleCollapse?: () => void;
-}
+interface SidebarProps { mobile?: boolean; collapsed?: boolean; onNavigate?: () => void; onToggleCollapse?: () => void }
 
-export function Sidebar({
-  mobile = false,
-  collapsed = false,
-  onNavigate,
-  onToggleCollapse,
-}: SidebarProps) {
+export function Sidebar({ mobile = false, collapsed = false, onNavigate, onToggleCollapse }: SidebarProps) {
   const { user } = useAuth();
   const location = useLocation();
   const navigate = useNavigate();
@@ -116,36 +89,17 @@ export function Sidebar({
   const [logoFallback, setLogoFallback] = useState(false);
 
   useEffect(() => {
-    const activeGroup = groups.find((group) =>
-      group.children.some(
-        (child) =>
-          location.pathname === child.to ||
-          location.pathname.startsWith(`${child.to}/`),
-      ),
-    );
-
+    const activeGroup = groups.find((group) => group.children.some((child) => location.pathname === child.to || location.pathname.startsWith(`${child.to}/`)));
     if (!activeGroup) return;
-
-    setOpen((current) => ({
-      ...current,
-      [activeGroup.label]: true,
-    }));
+    setOpen((current) => ({ ...current, [activeGroup.label]: true }));
   }, [location.pathname]);
 
   const renderGroup = (group: Group) => {
-    const allowedChildren = group.children.filter((child) =>
-      can(user, child.permission),
-    );
-
+    const allowedChildren = group.children.filter((child) => can(user, child.permission));
     if (!allowedChildren.length) return null;
-
     const expanded = collapsed ? false : open[group.label] ?? false;
     const Icon = group.icon;
-    const groupActive = allowedChildren.some(
-      (child) =>
-        location.pathname === child.to ||
-        location.pathname.startsWith(`${child.to}/`),
-    );
+    const groupActive = allowedChildren.some((child) => location.pathname === child.to || location.pathname.startsWith(`${child.to}/`));
 
     return (
       <div className={`nav-group ${groupActive ? 'group-active' : ''}`} key={group.label}>
@@ -155,84 +109,39 @@ export function Sidebar({
           title={collapsed ? group.label : undefined}
           onClick={() => {
             if (collapsed && allowedChildren[0]) {
-              navigate(allowedChildren[0].to);
-              onNavigate?.();
-              return;
+              navigate(allowedChildren[0].to); onNavigate?.(); return;
             }
-
-            setOpen((current) => ({
-              ...current,
-              [group.label]: !expanded,
-            }));
+            setOpen((current) => ({ ...current, [group.label]: !expanded }));
           }}
         >
-          <span>
-            <span className="nav-icon-box"><Icon size={18} /></span>
-            <span className="nav-label">{group.label}</span>
-          </span>
-
-          {!collapsed && (
-            <ChevronDown
-              size={16}
-              className={expanded ? 'rotate' : ''}
-            />
-          )}
+          <span><span className="nav-icon-box"><Icon size={18} /></span><span className="nav-label">{group.label}</span></span>
+          {!collapsed && <ChevronDown size={16} className={expanded ? 'rotate' : ''} />}
         </button>
 
-        {expanded && (
-          <div className="nav-children">
-            {allowedChildren.map((child) => (
-              <NavLink
-                key={child.to}
-                to={child.to}
-                onClick={onNavigate}
-                className={({ isActive }) =>
-                  `nav-child ${isActive ? 'active' : ''}`
-                }
-              >
-                {child.label}
-              </NavLink>
-            ))}
-          </div>
-        )}
+        {expanded && <div className="nav-children">
+          {allowedChildren.map((child) => (
+            <NavLink key={child.to} to={child.to} onClick={onNavigate} className={({ isActive }) => `nav-child ${isActive ? 'active' : ''}`}>
+              {child.label}
+            </NavLink>
+          ))}
+        </div>}
       </div>
     );
   };
 
   return (
-    <aside
-      className={`sidebar premium-sidebar ${mobile ? 'sidebar-mobile' : ''} ${collapsed ? 'compact' : ''}`}
-    >
+    <aside className={`sidebar premium-sidebar ${mobile ? 'sidebar-mobile' : ''} ${collapsed ? 'compact' : ''}`}>
       <div className="brand premium-brand">
         <div className="brand-logo-wrap">
           {!logoFallback ? (
-            <img
-              src={brandLogo}
-              alt="Prime Tech"
-              className="brand-logo-image"
-              onError={() => setLogoFallback(true)}
-            />
+            <img src={brandLogo} alt="Prime Tech" className="brand-logo-image" onError={() => setLogoFallback(true)} />
           ) : (
-            <img
-              src={`${import.meta.env.BASE_URL}brand/cronos-mark.svg`}
-              alt="Cronos"
-              className="brand-logo-image fallback"
-            />
+            <img src={`${import.meta.env.BASE_URL}brand/cronos-mark.svg`} alt="Cronos" className="brand-logo-image fallback" />
           )}
         </div>
-
-        <div className="brand-copy">
-          <strong>CRONOS</strong>
-          <small>Prime Tech</small>
-        </div>
-
+        <div className="brand-copy"><strong>CRONOS</strong><small>Prime Tech</small></div>
         {!mobile && onToggleCollapse && (
-          <button
-            type="button"
-            className="sidebar-collapse-button"
-            onClick={onToggleCollapse}
-            aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}
-          >
+          <button type="button" className="sidebar-collapse-button" onClick={onToggleCollapse} aria-label={collapsed ? 'Expandir menu' : 'Recolher menu'}>
             {collapsed ? <PanelLeftOpen size={17} /> : <PanelLeftClose size={17} />}
           </button>
         )}
@@ -240,35 +149,18 @@ export function Sidebar({
 
       <nav className="nav premium-nav">
         <div className="nav-section-title">Visão geral</div>
-
-        <NavLink
-          to="/"
-          end
-          onClick={onNavigate}
-          title={collapsed ? 'Dashboard' : undefined}
-          className={({ isActive }) =>
-            `nav-link ${isActive ? 'active' : ''}`
-          }
-        >
-          <span className="nav-icon-box"><Gauge size={18} /></span>
-          <span className="nav-label">Dashboard</span>
+        <NavLink to="/" end onClick={onNavigate} title={collapsed ? 'Dashboard' : undefined} className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>
+          <span className="nav-icon-box"><Gauge size={18} /></span><span className="nav-label">Dashboard</span>
         </NavLink>
-
         <div className="nav-section-title nav-section-spaced">Módulos</div>
         {groups.slice(0, 5).map(renderGroup)}
-
         <div className="nav-section-title nav-section-spaced">Gestão</div>
         {groups.slice(5).map(renderGroup)}
       </nav>
 
       <div className="sidebar-foot premium-sidebar-foot">
-        <div className="sidebar-foot-icon">
-          <ShieldCheck size={16} />
-        </div>
-        <div className="sidebar-foot-copy">
-          <strong>Prime Tech Cronos</strong>
-          <span>Tecnologia que impulsiona.</span>
-        </div>
+        <div className="sidebar-foot-icon"><ShieldCheck size={16} /></div>
+        <div className="sidebar-foot-copy"><strong>Prime Tech Cronos</strong><span>Tecnologia que impulsiona.</span></div>
       </div>
     </aside>
   );
