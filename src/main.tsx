@@ -12,11 +12,13 @@ import './styles.css';
 import './premium.css';
 import './login-v2.css';
 
+const routerBase = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
+
 ReactDOM.createRoot(
   document.getElementById('root')!,
 ).render(
   <React.StrictMode>
-    <BrowserRouter>
+    <BrowserRouter basename={routerBase}>
       <AuthProvider>
         <PrimeTechProvider>
           <App />
