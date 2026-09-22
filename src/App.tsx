@@ -15,12 +15,14 @@ import { EquipmentPage } from './pages/EquipmentPage';
 import { FinancialHubPage } from './pages/FinancialHubPage';
 import { FiscalPage } from './pages/FiscalPage';
 import { FiscalSettingsPage } from './pages/FiscalSettingsPage';
+import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { LoginPage } from './pages/LoginPage';
 import { NewOrderPage } from './pages/NewOrderPage';
 import { OrderDetailPage } from './pages/OrderDetailPage';
 import { OrderItemsPage } from './pages/OrderItemsPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { ReportsPage } from './pages/ReportsPage';
+import { ResetPasswordPage } from './pages/ResetPasswordPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { StockHistoryPage } from './pages/StockHistoryPage';
 import { StockPage } from './pages/StockPage';
@@ -60,6 +62,8 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/recuperar-senha" element={<ForgotPasswordPage />} />
+      <Route path="/redefinir-senha" element={<ResetPasswordPage />} />
 
       <Route path="/" element={<ProtectedLayout />}>
         <Route index element={<DashboardPage />} />
