@@ -1,4 +1,19 @@
-import { AlertTriangle, Boxes, Building2, CheckCircle2, FileCog, Landmark, PlusCircle, RefreshCw, Save, Wrench } from 'lucide-react';
+import {
+  AlertTriangle,
+  Boxes,
+  Building2,
+  CheckCircle2,
+  FileCog,
+  KeyRound,
+  Landmark,
+  PlusCircle,
+  RefreshCw,
+  Save,
+  ShieldCheck,
+  Trash2,
+  UploadCloud,
+  Wrench,
+} from 'lucide-react';
 import { type FormEvent, useEffect, useMemo, useState } from 'react';
 
 import { PageHeader } from '../components/ui/PageHeader';
@@ -41,6 +56,21 @@ type ServiceRule = {
   active: boolean;
 };
 
+type FiscalCertificate = {
+  id: string;
+  company_id: string;
+  certificate_type: 'A1';
+  file_name: string;
+  storage_path: string;
+  file_size?: number | null;
+  status: 'stored' | 'provider_synced' | 'expired' | 'revoked' | 'error';
+  provider_reference?: string | null;
+  valid_from?: string | null;
+  valid_until?: string | null;
+  last_error?: string | null;
+  uploaded_at: string;
+};
+
 type CompanyForm = {
   legalName: string; document: string; stateRegistration: string; municipalRegistration: string;
   taxRegime: string; street: string; number: string; complement: string; district: string;
@@ -76,6 +106,12 @@ function companyToForm(company: CompanySettings): CompanyForm {
   };
 }
 
+function readableSize(value?: number | null) {
+  if (!value) return '—';
+  if (value < 1024 * 1024) return `${Math.ceil(value / 1024)} KB`;
+  return `${(value / 1024 / 1024).toFixed(1)} MB`;
+}
+
 export function FiscalSettingsPage() {
   const { user, mode } = useAuth();
   const { companyId, company, stock, updateCompany, refresh } = usePrimeTech();
@@ -83,6 +119,8 @@ export function FiscalSettingsPage() {
 
   const [settings, setSettings] = useState<FiscalSettingsRow | null>(null);
   const [rules, setRules] = useState<ServiceRule[]>([]);
+  const [certificate, setCertificate] = useState<FiscalCertificate | null>(null);
+  const [certificateFile, setCertificateFile] = useState<File | null>(null);
   const [companyForm, setCompanyForm] = useState<CompanyForm>(() => companyToForm(company));
   const [selectedProduct, setSelectedProduct] = useState<StockItem | null>(null);
   const [productForm, setProductForm] = useState({ ncm: '', cest: '', unit: 'UN', origin: '0', cfopInternal: '', cfopInterstate: '', icms: '', pis: '', cofins: '', ipi: '', ibsCbsSituation: '', ibsCbsClassification: '' });
@@ -100,21 +138,23 @@ export function FiscalSettingsPage() {
       setLoading(false);
       return;
     }
-    const db = supabase!;
-    const activeCompanyId = companyId as string;
+    const db = supabase;
+    const activeCompanyId = companyId;
     let alive = true;
     void (async () => {
       setLoading(true); setError('');
       try {
-        const [a, b] = await Promise.all([
+        const [a, b, c] = await Promise.all([
           db.from('fiscal_settings').select('*').eq('company_id', activeCompanyId).maybeSingle(),
           db.from('fiscal_service_rules').select('*').eq('company_id', activeCompanyId).order('name'),
+          db.from('fiscal_certificates').select('*').eq('company_id', activeCompanyId).maybeSingle(),
         ]);
         if (a.error) throw a.error;
         if (b.error) throw b.error;
         if (alive) {
           setSettings((a.data as FiscalSettingsRow | null) ?? defaults(activeCompanyId));
           setRules((b.data ?? []) as ServiceRule[]);
+          setCertificate(c.error ? null : (c.data as FiscalCertificate | null));
         }
       } catch (cause) {
         if (alive) setError(cause instanceof Error ? cause.message : 'Falha ao carregar configuração fiscal.');
@@ -123,7 +163,10 @@ export function FiscalSettingsPage() {
     return () => { alive = false; };
   }, [companyId, mode]);
 
-  const incompleteProducts = useMemo(() => stock.filter((item) => item.active !== false && (!item.ncm || !item.cfop_internal || !item.cfop_interstate || !item.icms_situation || !item.pis_situation || !item.cofins_situation)), [stock]);
+  const incompleteProducts = useMemo(
+    () => stock.filter((item) => item.active !== false && (!item.ncm || !item.cfop_internal || !item.cfop_interstate || !item.icms_situation || !item.pis_situation || !item.cofins_situation)),
+    [stock],
+  );
 
   function beginProduct(item: StockItem) {
     setSelectedProduct(item);
@@ -157,10 +200,65 @@ export function FiscalSettingsPage() {
     try {
       const payload: Record<string, unknown> = { ...settings, company_id: companyId, gateway_provider: 'focus_nfe' };
       delete payload.id;
-      const { data, error: saveError } = await supabase!.from('fiscal_settings').upsert(payload, { onConflict: 'company_id' }).select().single();
+      const { data, error: saveError } = await supabase.from('fiscal_settings').upsert(payload, { onConflict: 'company_id' }).select().single();
       if (saveError) throw saveError;
       setSettings(data as FiscalSettingsRow); setSuccess('Emissor fiscal configurado.');
     } catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao salvar emissor.'); }
+    finally { setSaving(false); }
+  }
+
+  async function uploadCertificate() {
+    if (!canManage || !companyId || !supabase || !certificateFile) return;
+    const extension = certificateFile.name.split('.').pop()?.toLowerCase();
+    if (!extension || !['pfx', 'p12'].includes(extension)) return setError('Selecione um certificado A1 nos formatos .pfx ou .p12.');
+    if (certificateFile.size > 10 * 1024 * 1024) return setError('O certificado deve ter no máximo 10 MB.');
+
+    setSaving(true); setError(''); setSuccess('');
+    try {
+      const path = `${companyId}/certificate.${extension}`;
+      const { error: uploadError } = await supabase.storage.from('fiscal-certificates').upload(path, certificateFile, {
+        upsert: true,
+        contentType: 'application/x-pkcs12',
+      });
+      if (uploadError) throw uploadError;
+
+      const { data: authData } = await supabase.auth.getUser();
+      const { data, error: metadataError } = await supabase.from('fiscal_certificates').upsert({
+        company_id: companyId,
+        certificate_type: 'A1',
+        file_name: certificateFile.name,
+        storage_path: path,
+        file_size: certificateFile.size,
+        status: 'stored',
+        uploaded_by: authData.user?.id ?? null,
+        uploaded_at: new Date().toISOString(),
+        updated_at: new Date().toISOString(),
+        last_error: null,
+      }, { onConflict: 'company_id' }).select().single();
+      if (metadataError) throw metadataError;
+      setCertificate(data as FiscalCertificate);
+      setCertificateFile(null);
+      setSuccess('Certificado A1 armazenado com segurança. A senha não foi salva.');
+    } catch (cause) {
+      const message = cause instanceof Error ? cause.message : 'Falha ao armazenar certificado.';
+      setError(message.includes('fiscal-certificates') || message.includes('fiscal_certificates')
+        ? 'Execute a migration 0012_cronos_fiscal_certificate_storage.sql antes de enviar o A1.'
+        : message);
+    } finally { setSaving(false); }
+  }
+
+  async function removeCertificate() {
+    if (!canManage || !certificate || !supabase) return;
+    if (!window.confirm('Remover o certificado A1 armazenado no Cronos?')) return;
+    setSaving(true); setError(''); setSuccess('');
+    try {
+      const { error: storageError } = await supabase.storage.from('fiscal-certificates').remove([certificate.storage_path]);
+      if (storageError) throw storageError;
+      const { error: deleteError } = await supabase.from('fiscal_certificates').delete().eq('id', certificate.id);
+      if (deleteError) throw deleteError;
+      setCertificate(null);
+      setSuccess('Certificado removido.');
+    } catch (cause) { setError(cause instanceof Error ? cause.message : 'Falha ao remover certificado.'); }
     finally { setSaving(false); }
   }
 
@@ -168,7 +266,7 @@ export function FiscalSettingsPage() {
     event.preventDefault(); if (!canManage || !selectedProduct || !supabase) return;
     setSaving(true); setError(''); setSuccess('');
     try {
-      const { error: saveError } = await supabase!.from('stock_items').update({
+      const { error: saveError } = await supabase.from('stock_items').update({
         ncm: productForm.ncm.replace(/\D/g, '') || null, cest: productForm.cest.replace(/\D/g, '') || null,
         commercial_unit: productForm.unit.trim().toUpperCase() || 'UN', tax_origin: productForm.origin.trim() || '0',
         cfop_internal: productForm.cfopInternal.replace(/\D/g, '') || null, cfop_interstate: productForm.cfopInterstate.replace(/\D/g, '') || null,
@@ -188,7 +286,7 @@ export function FiscalSettingsPage() {
     setSaving(true); setError(''); setSuccess('');
     try {
       const parsed = serviceForm.issRate ? Number(serviceForm.issRate.replace(',', '.')) : null;
-      const { data, error: saveError } = await supabase!.from('fiscal_service_rules').insert({
+      const { data, error: saveError } = await supabase.from('fiscal_service_rules').insert({
         company_id: companyId, name: serviceForm.name.trim(), national_tax_code: serviceForm.nationalTaxCode.replace(/\D/g, '') || null,
         municipal_service_code: serviceForm.municipalServiceCode.trim() || null, lc116_code: serviceForm.lc116.trim() || null,
         cnae: serviceForm.cnae.replace(/\D/g, '') || null, iss_rate: parsed !== null && Number.isFinite(parsed) ? parsed : null,
@@ -207,13 +305,13 @@ export function FiscalSettingsPage() {
   const companyReady = Boolean(companyForm.legalName && companyForm.document && companyForm.taxRegime && companyForm.cityCode && companyForm.postalCode);
 
   return <>
-    <PageHeader eyebrow="Fiscal" title="Configuração para emissão de notas" description="Emitente, produtos, serviços e gateway necessários para NF-e, NFC-e e NFS-e. O CNPJ pode ser concluído depois." />
+    <PageHeader eyebrow="Fiscal" title="Configuração para emissão de notas" description="Emitente, certificado A1, produtos, serviços e gateway para NF-e, NFC-e e NFS-e." />
     {(error || success) && <section className="notice" style={{ marginBottom: 16 }}>{error ? <AlertTriangle size={20} /> : <CheckCircle2 size={20} />}<div><strong>{error ? 'Atenção' : 'Salvo'}</strong><p>{error || success}</p></div></section>}
 
     <div className="metrics-grid">
-      <article className={`metric-card ${companyReady ? 'green' : 'amber'}`}><div className="metric-icon"><Building2 /></div><span>Emitente</span><strong>{companyReady ? 'Pronto' : 'Pendente'}</strong><small>CNPJ pode entrar depois</small></article>
+      <article className={`metric-card ${companyReady ? 'green' : 'amber'}`}><div className="metric-icon"><Building2 /></div><span>Emitente</span><strong>{companyReady ? 'Pronto' : 'Pendente'}</strong><small>Cadastro fiscal da empresa</small></article>
+      <article className={`metric-card ${certificate ? 'green' : 'amber'}`}><div className="metric-icon"><KeyRound /></div><span>Certificado A1</span><strong>{certificate ? 'Armazenado' : 'Pendente'}</strong><small>.PFX ou .P12 privado</small></article>
       <article className={`metric-card ${incompleteProducts.length ? 'amber' : 'green'}`}><div className="metric-icon"><Boxes /></div><span>Produtos pendentes</span><strong>{incompleteProducts.length}</strong><small>NCM / CFOP / impostos</small></article>
-      <article className={`metric-card ${rules.length ? 'green' : 'amber'}`}><div className="metric-icon"><Wrench /></div><span>Regras NFS-e</span><strong>{rules.length}</strong><small>Serviços cadastrados</small></article>
       <article className={`metric-card ${settings.environment === 'production' ? 'red' : ''}`}><div className="metric-icon"><Landmark /></div><span>Ambiente</span><strong>{settings.environment === 'production' ? 'Produção' : 'Homologação'}</strong><small>Focus NFe</small></article>
     </div>
 
@@ -235,6 +333,18 @@ export function FiscalSettingsPage() {
       </div>{canManage && <button type="submit" disabled={saving}><Save size={16} /> Salvar emitente</button>}</form>
     </section>
 
+    <section className="panel" style={{ marginBottom: 20 }}>
+      <div className="panel-head"><div><span className="eyebrow">Certificado digital</span><h2>Certificado A1 da empresa</h2></div><ShieldCheck /></div>
+      {certificate ? <div style={{ display: 'grid', gap: 14 }}>
+        <div className="notice"><CheckCircle2 size={19} /><div><strong>{certificate.file_name}</strong><p>Armazenado em bucket privado · {readableSize(certificate.file_size)} · enviado em {new Date(certificate.uploaded_at).toLocaleString('pt-BR')}.</p></div></div>
+        <div className="quick-actions"><span className="stock-state ok">A1 armazenado</span>{certificate.valid_until && <span className="ghost-button">Validade: {new Date(certificate.valid_until).toLocaleDateString('pt-BR')}</span>}{canManage && <button type="button" className="ghost-button" onClick={() => void removeCertificate()} disabled={saving}><Trash2 size={16} /> Remover / substituir</button>}</div>
+      </div> : <div style={{ display: 'grid', gap: 14 }}>
+        <div className="notice"><KeyRound size={19} /><div><strong>Envie o arquivo A1 quando estiver com ele</strong><p>Aceitamos .PFX e .P12. O arquivo fica privado. A senha do certificado não é armazenada pelo Cronos; ela será solicitada apenas quando precisarmos sincronizar o certificado com o provedor fiscal.</p></div></div>
+        {canManage && <div className="form-grid"><label style={{ gridColumn: '1 / -1' }}><span>Arquivo do certificado A1</span><input type="file" accept=".pfx,.p12,application/x-pkcs12,application/pkcs12" onChange={(e) => setCertificateFile(e.target.files?.[0] ?? null)} /></label></div>}
+        {certificateFile && <div className="quick-actions"><span className="ghost-button">{certificateFile.name} · {readableSize(certificateFile.size)}</span><button type="button" onClick={() => void uploadCertificate()} disabled={saving}><UploadCloud size={16} /> {saving ? 'Enviando...' : 'Armazenar A1'}</button></div>}
+      </div>}
+    </section>
+
     <section className="panel" style={{ marginBottom: 20 }}><div className="panel-head"><div><span className="eyebrow">Gateway</span><h2>Emissor Focus NFe</h2></div><FileCog /></div>
       <form onSubmit={(e) => void saveSettings(e)} style={{ display: 'grid', gap: 14 }}><div className="form-grid">
         <label><span>Ambiente</span><select value={settings.environment} onChange={(e) => setSettings((v) => v ? { ...v, environment: e.target.value as FiscalSettingsRow['environment'] } : v)}><option value="homologation">Homologação</option><option value="production">Produção</option></select></label>
@@ -250,7 +360,7 @@ export function FiscalSettingsPage() {
         <label className="ghost-button"><input type="checkbox" checked={settings.nfse_enabled} onChange={(e) => setSettings((v) => v ? { ...v, nfse_enabled: e.target.checked } : v)} /> NFS-e</label>
         {settings.environment === 'production' && <label className="ghost-button"><input type="checkbox" checked={settings.production_confirmed} onChange={(e) => setSettings((v) => v ? { ...v, production_confirmed: e.target.checked } : v)} /> Confirmo emissão real</label>}
       </div>{canManage && <button type="submit" disabled={saving}><Save size={16} /> Salvar emissor</button>}</form>
-      <div className="notice" style={{ marginTop: 14 }}><FileCog size={18} /><div><strong>Token protegido</strong><p>As credenciais ficam exclusivamente no backend, nunca no navegador.</p></div></div>
+      <div className="notice" style={{ marginTop: 14 }}><FileCog size={18} /><div><strong>Token protegido</strong><p>O token Focus NFe continua exclusivamente nos Secrets da Edge Function e nunca aparece no navegador.</p></div></div>
     </section>
 
     <section className="panel" style={{ marginBottom: 20 }}><div className="panel-head"><div><span className="eyebrow">Produtos</span><h2>NCM, CFOP e tributação</h2></div><Boxes /></div>
