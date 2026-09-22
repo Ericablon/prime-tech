@@ -1,9 +1,283 @@
 -- CRONOS / Prime Tech — catálogo financeiro dinâmico + vínculos em lançamentos/parcelas
 -- Aplicar APÓS 0015_cronos_custom_profile_storage_policies.sql
+-- Esta migration também recria a base mínima do catálogo financeiro caso a 0007
+-- não tenha criado essas estruturas neste ambiente.
 
 begin;
 
--- Aceita todas as formas já oferecidas pela interface do Cronos.
+-- ============================================================================
+-- 1) GARANTE O CATÁLOGO FINANCEIRO
+-- ============================================================================
+
+create table if not exists public.financial_accounts (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  name text not null,
+  account_type text not null default 'cash'
+    check (account_type in ('cash','checking','savings','digital','other')),
+  bank_name text,
+  agency text,
+  account_number text,
+  pix_key text,
+  opening_balance numeric(14,2) not null default 0,
+  active boolean not null default true,
+  notes text,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (company_id, name)
+);
+
+create table if not exists public.financial_categories (
+  id uuid primary key default gen_random_uuid(),
+  company_id uuid not null references public.companies(id) on delete cascade,
+  code text not null,
+  name text not null,
+  direction text not null check (direction in ('income','expense','both')),
+  dre_group text not null check (dre_group in (
+    'gross_revenue','deduction','cost_of_sales','operating_expense',
+    'financial_expense','other_income','other_expense'
+  )),
+  sort_order integer not null default 0,
+  active boolean not null default true,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now(),
+  unique (company_id, code),
+  unique (company_id, name)
+);
+
+insert into public.financial_accounts(company_id, name, account_type, opening_balance)
+select c.id, 'Caixa Geral', 'cash', 0
+from public.companies c
+on conflict (company_id, name) do nothing;
+
+insert into public.financial_categories(company_id, code, name, direction, dre_group, sort_order)
+select c.id, x.code, x.name, x.direction, x.dre_group, x.sort_order
+from public.companies c
+cross join (values
+  ('servicos', 'Serviços', 'income', 'gross_revenue', 10),
+  ('pecas', 'Peças', 'income', 'gross_revenue', 20),
+  ('venda_equipamentos', 'Venda de equipamentos', 'income', 'gross_revenue', 30),
+  ('outras_receitas', 'Outras receitas', 'income', 'other_income', 90),
+  ('impostos_taxas', 'Impostos e taxas', 'expense', 'deduction', 110),
+  ('custo_pecas', 'Custo de peças e materiais', 'expense', 'cost_of_sales', 120),
+  ('folha_pessoal', 'Folha e pessoal', 'expense', 'operating_expense', 210),
+  ('aluguel', 'Aluguel', 'expense', 'operating_expense', 220),
+  ('energia', 'Energia', 'expense', 'operating_expense', 230),
+  ('internet_telefonia', 'Internet e telefonia', 'expense', 'operating_expense', 240),
+  ('transporte', 'Transporte e deslocamento', 'expense', 'operating_expense', 250),
+  ('manutencao', 'Manutenção e conservação', 'expense', 'operating_expense', 260),
+  ('marketing', 'Marketing e comercial', 'expense', 'operating_expense', 270),
+  ('taxas_financeiras', 'Taxas e despesas financeiras', 'expense', 'financial_expense', 310),
+  ('outras_despesas', 'Outras despesas', 'expense', 'other_expense', 390)
+) as x(code, name, direction, dre_group, sort_order)
+on conflict (company_id, code) do nothing;
+
+alter table public.financial_entries
+  add column if not exists category_id uuid references public.financial_categories(id) on delete set null,
+  add column if not exists account_id uuid references public.financial_accounts(id) on delete set null,
+  add column if not exists competence_date date;
+
+alter table public.payment_installments
+  add column if not exists category_id uuid references public.financial_categories(id) on delete set null,
+  add column if not exists account_id uuid references public.financial_accounts(id) on delete set null,
+  add column if not exists competence_date date;
+
+update public.financial_entries f
+set account_id = (
+  select fa.id
+  from public.financial_accounts fa
+  where fa.company_id = f.company_id
+    and fa.active = true
+  order by fa.created_at, fa.id
+  limit 1
+)
+where f.account_id is null
+  and f.company_id is not null;
+
+update public.payment_installments p
+set account_id = (
+  select fa.id
+  from public.financial_accounts fa
+  where fa.company_id = p.company_id
+    and fa.active = true
+  order by fa.created_at, fa.id
+  limit 1
+)
+where p.account_id is null
+  and p.company_id is not null;
+
+update public.financial_entries f
+set category_id = c.id
+from public.financial_categories c
+where c.company_id = f.company_id
+  and lower(c.name) = lower(f.category)
+  and f.category_id is null;
+
+update public.payment_installments p
+set category_id = c.id
+from public.financial_categories c
+where c.company_id = p.company_id
+  and lower(c.name) = lower(p.category)
+  and p.category_id is null;
+
+update public.financial_entries
+set competence_date = occurred_at::date
+where competence_date is null;
+
+update public.payment_installments
+set competence_date = due_date
+where competence_date is null;
+
+create index if not exists idx_financial_entries_company_competence
+  on public.financial_entries(company_id, competence_date, type);
+create index if not exists idx_financial_entries_category
+  on public.financial_entries(company_id, category_id);
+create index if not exists idx_payment_installments_company_due
+  on public.payment_installments(company_id, due_date, type, paid_at);
+
+create or replace function public.sync_financial_category_name()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public
+as $$
+declare
+  v_name text;
+  v_direction text;
+begin
+  if new.category_id is null then
+    return new;
+  end if;
+
+  select c.name, c.direction
+  into v_name, v_direction
+  from public.financial_categories c
+  where c.id = new.category_id
+    and c.company_id = new.company_id
+    and c.active = true;
+
+  if v_name is null then
+    raise exception 'Categoria financeira inválida para esta empresa';
+  end if;
+
+  if v_direction <> 'both' and v_direction <> new.type then
+    raise exception 'A categoria financeira selecionada não aceita lançamentos do tipo %', new.type;
+  end if;
+
+  new.category := v_name;
+  return new;
+end;
+$$;
+
+drop trigger if exists sync_financial_entry_category on public.financial_entries;
+create trigger sync_financial_entry_category
+before insert or update of category_id, company_id, type
+on public.financial_entries
+for each row execute function public.sync_financial_category_name();
+
+drop trigger if exists sync_payment_installment_category on public.payment_installments;
+create trigger sync_payment_installment_category
+before insert or update of category_id, company_id, type
+on public.payment_installments
+for each row execute function public.sync_financial_category_name();
+
+alter table public.financial_accounts enable row level security;
+alter table public.financial_categories enable row level security;
+
+drop policy if exists financial_accounts_read on public.financial_accounts;
+create policy financial_accounts_read
+on public.financial_accounts for select to authenticated
+using (private.has_company_permission(company_id, 'finance.view'));
+
+drop policy if exists financial_accounts_manage on public.financial_accounts;
+create policy financial_accounts_manage
+on public.financial_accounts for all to authenticated
+using (private.has_company_permission(company_id, 'finance.manage'))
+with check (private.has_company_permission(company_id, 'finance.manage'));
+
+drop policy if exists financial_categories_read on public.financial_categories;
+create policy financial_categories_read
+on public.financial_categories for select to authenticated
+using (private.has_company_permission(company_id, 'finance.view'));
+
+drop policy if exists financial_categories_manage on public.financial_categories;
+create policy financial_categories_manage
+on public.financial_categories for all to authenticated
+using (private.has_company_permission(company_id, 'finance.manage'))
+with check (private.has_company_permission(company_id, 'finance.manage'));
+
+-- Garante o resumo DRE mesmo em ambientes que não receberam integralmente a 0007.
+create or replace function public.financial_dre_summary(
+  p_company uuid,
+  p_start date,
+  p_end date
+)
+returns jsonb
+language plpgsql
+stable
+security invoker
+set search_path = public
+as $$
+declare
+  v_result jsonb;
+begin
+  if not private.has_company_permission(p_company, 'finance.dre') then
+    raise exception 'Usuário sem permissão para visualizar o DRE';
+  end if;
+
+  with base as (
+    select
+      f.type,
+      f.amount,
+      coalesce(c.name, f.category) as category_name,
+      coalesce(
+        c.dre_group,
+        case when f.type = 'income' then 'other_income' else 'other_expense' end
+      ) as dre_group
+    from public.financial_entries f
+    left join public.financial_categories c on c.id = f.category_id
+    where f.company_id = p_company
+      and coalesce(f.competence_date, f.occurred_at::date) between p_start and p_end
+  ), by_category as (
+    select type, category_name, dre_group, sum(amount)::numeric(14,2) as amount
+    from base
+    group by type, category_name, dre_group
+  )
+  select jsonb_build_object(
+    'gross_revenue', coalesce((select sum(amount) from base where type='income' and dre_group='gross_revenue'),0),
+    'deductions', coalesce((select sum(amount) from base where type='expense' and dre_group='deduction'),0),
+    'cost_of_sales', coalesce((select sum(amount) from base where type='expense' and dre_group='cost_of_sales'),0),
+    'operating_expenses', coalesce((select sum(amount) from base where type='expense' and dre_group='operating_expense'),0),
+    'financial_expenses', coalesce((select sum(amount) from base where type='expense' and dre_group='financial_expense'),0),
+    'other_income', coalesce((select sum(amount) from base where type='income' and dre_group='other_income'),0),
+    'other_expenses', coalesce((select sum(amount) from base where type='expense' and dre_group='other_expense'),0),
+    'income_total', coalesce((select sum(amount) from base where type='income'),0),
+    'expense_total', coalesce((select sum(amount) from base where type='expense'),0),
+    'result', coalesce((select sum(case when type='income' then amount else -amount end) from base),0),
+    'by_category', coalesce((
+      select jsonb_agg(
+        jsonb_build_object(
+          'type', type,
+          'category', category_name,
+          'dre_group', dre_group,
+          'amount', amount
+        ) order by type, dre_group, category_name
+      )
+      from by_category
+    ), '[]'::jsonb)
+  ) into v_result;
+
+  return v_result;
+end;
+$$;
+
+revoke all on function public.financial_dre_summary(uuid,date,date) from public, anon;
+grant execute on function public.financial_dre_summary(uuid,date,date) to authenticated;
+
+-- ============================================================================
+-- 2) FORMAS DE PAGAMENTO
+-- ============================================================================
+
 alter table public.payment_installments
   drop constraint if exists payment_installments_payment_method_check;
 
@@ -13,7 +287,10 @@ alter table public.payment_installments
     'cash','pix','credit_card','debit_card','boleto','transfer','store_credit','check','other'
   ));
 
--- Ao liquidar uma parcela, preserva categoria/conta e competência no realizado.
+-- ============================================================================
+-- 3) BAIXA DE PARCELA -> REALIZADO
+-- ============================================================================
+
 create or replace function private.post_installment()
 returns trigger
 language plpgsql
@@ -69,6 +346,10 @@ after insert or update
 on public.payment_installments
 for each row execute function private.post_installment();
 
+-- ============================================================================
+-- 4) PLANO DE PAGAMENTO COM CATEGORIA/CONTA
+-- ============================================================================
+
 -- Remove a assinatura anterior para o PostgREST não encontrar overload ambíguo.
 drop function if exists public.create_payment_plan(
   uuid, uuid, text, text, text, numeric, integer, date, text, boolean
@@ -97,9 +378,8 @@ declare
   v_company uuid;
   v_company_count integer;
   v_order public.service_orders;
-  v_category public.financial_categories;
-  v_account public.financial_accounts;
   v_category_name text;
+  v_category_direction text;
   v_n integer;
   v_cents bigint;
   v_base bigint;
@@ -176,21 +456,20 @@ begin
   end if;
 
   if p_category_id is not null then
-    select * into v_category
-    from public.financial_categories
-    where id = p_category_id
-      and company_id = v_company
-      and active = true;
+    select c.name, c.direction
+    into v_category_name, v_category_direction
+    from public.financial_categories c
+    where c.id = p_category_id
+      and c.company_id = v_company
+      and c.active = true;
 
     if not found then
       raise exception 'Categoria financeira inválida para esta empresa';
     end if;
 
-    if v_category.direction <> 'both' and v_category.direction <> p_type then
+    if v_category_direction <> 'both' and v_category_direction <> p_type then
       raise exception 'A categoria financeira não aceita este tipo de lançamento';
     end if;
-
-    v_category_name := v_category.name;
   else
     v_category_name := trim(coalesce(p_category, ''));
   end if;
@@ -199,16 +478,14 @@ begin
     raise exception 'Categoria financeira obrigatória';
   end if;
 
-  if p_account_id is not null then
-    select * into v_account
-    from public.financial_accounts
-    where id = p_account_id
-      and company_id = v_company
-      and active = true;
-
-    if not found then
-      raise exception 'Conta financeira inválida para esta empresa';
-    end if;
+  if p_account_id is not null and not exists (
+    select 1
+    from public.financial_accounts a
+    where a.id = p_account_id
+      and a.company_id = v_company
+      and a.active = true
+  ) then
+    raise exception 'Conta financeira inválida para esta empresa';
   end if;
 
   perform pg_advisory_xact_lock(hashtext(p_request_id::text));
