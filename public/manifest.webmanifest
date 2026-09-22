@@ -1,9 +1,18 @@
 {
-  "name":"Cronos — Gestão de Assistência Técnica",
-  "short_name":"Cronos",
-  "start_url":"/",
-  "display":"standalone",
-  "background_color":"#08101f",
-  "theme_color":"#08101f",
-  "description":"Operação integrada de assistência técnica, do atendimento ao fiscal."
+  "name": "Cronos — Gestão de Assistência Técnica",
+  "short_name": "Cronos",
+  "start_url": "/prime-tech/",
+  "scope": "/prime-tech/",
+  "display": "standalone",
+  "background_color": "#08101f",
+  "theme_color": "#08101f",
+  "description": "Operação integrada de assistência técnica, do atendimento ao fiscal.",
+  "icons": [
+    {
+      "src": "/prime-tech/brand/prime-tech-logo.jpeg",
+      "sizes": "any",
+      "type": "image/jpeg",
+      "purpose": "any maskable"
+    }
+  ]
 }
