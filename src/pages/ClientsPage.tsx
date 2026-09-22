@@ -1,5 +1,6 @@
 import { Edit3, Plus, Search, Users, X } from 'lucide-react';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { PageHeader } from '../components/ui/PageHeader';
 import { useAuth } from '../contexts/AuthContext';
@@ -63,12 +64,17 @@ function toForm(client: Client): ClientForm {
 export function ClientsPage() {
   const { user, mode } = useAuth();
   const { clients, equipment, orders, loading, error: contextError, createClient, refresh } = usePrimeTech();
+  const [searchParams] = useSearchParams();
 
-  const [search, setSearch] = useState('');
+  const [search, setSearch] = useState(() => searchParams.get('busca') ?? '');
   const [open, setOpen, clearOpenDraft] = useSessionDraft('client-form-open', false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
   const [form, setForm, clearFormDraft] = useSessionDraft<ClientForm>('client-form', emptyForm);
+
+  useEffect(() => {
+    setSearch(searchParams.get('busca') ?? '');
+  }, [searchParams]);
 
   const filteredClients = useMemo(() => {
     const term = search.trim().toLowerCase();
