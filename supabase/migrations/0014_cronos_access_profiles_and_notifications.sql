@@ -372,7 +372,7 @@ begin
 
   if p_profile_id is null then
     v_id := gen_random_uuid();
-    v_code := lower(regexp_replace(unaccent(coalesce(p_name, 'perfil')), '[^a-zA-Z0-9]+', '_', 'g'));
+    v_code := lower(regexp_replace(coalesce(p_name, 'perfil'), '[^a-zA-Z0-9]+', '_', 'g'));
     v_code := trim(both '_' from v_code);
     if v_code = '' then v_code := 'perfil'; end if;
     v_code := v_code || '_' || substr(replace(v_id::text, '-', ''), 1, 6);
