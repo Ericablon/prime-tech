@@ -14,6 +14,7 @@ import { DrePage } from './pages/DrePage';
 import { EquipmentPage } from './pages/EquipmentPage';
 import { FinancialHubPage } from './pages/FinancialHubPage';
 import { FiscalPage } from './pages/FiscalPage';
+import { FiscalSettingsPage } from './pages/FiscalSettingsPage';
 import { LoginPage } from './pages/LoginPage';
 import { NewOrderPage } from './pages/NewOrderPage';
 import { OrderDetailPage } from './pages/OrderDetailPage';
@@ -63,6 +64,7 @@ export default function App() {
       <Route path="/financeiro" element={<Guard permission="finance.view"><FinancialHubPage /></Guard>} />
       <Route path="/financeiro/dre" element={<Guard permission="finance.dre"><DrePage /></Guard>} />
       <Route path="/fiscal" element={<Guard permission="fiscal.view"><FiscalPage /></Guard>} />
+      <Route path="/fiscal/configuracao" element={<Guard permission="fiscal.settings"><FiscalSettingsPage /></Guard>} />
       <Route path="/relatorios" element={<Guard permission="reports.view"><ReportsPage /></Guard>} />
       <Route path="/administracao" element={<Guard permission="settings.manage"><AdminPage /></Guard>} />
       <Route path="/administracao/especialidades" element={<Guard permission="settings.manage"><TechnicalSpecialtiesPage /></Guard>} />
