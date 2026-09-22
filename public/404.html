@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="pt-BR">
+  <head>
+    <meta charset="utf-8" />
+    <title>Cronos • Prime Tech</title>
+  </head>
+  <body>
+    <script>
+      (function () {
+        var target = window.location.pathname + window.location.search + window.location.hash;
+        try {
+          window.sessionStorage.setItem('cronos:pages-redirect', target);
+        } catch (_) {}
+        window.location.replace('/prime-tech/');
+      })();
+    </script>
+  </body>
+</html>
