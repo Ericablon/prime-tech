@@ -1,5 +1,6 @@
-import { Edit3, Laptop, Plus, Search, Wrench, X } from 'lucide-react';
-import { useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
+import { Edit3, Laptop, Plus, Save, Search, Wrench, X } from 'lucide-react';
+import { useEffect, useMemo, useState, type CSSProperties, type FormEvent, type ReactNode } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { PageHeader } from '../components/ui/PageHeader';
 import { StatusBadge } from '../components/ui/StatusBadge';
@@ -13,6 +14,7 @@ import type { CreateEquipmentInput, Equipment } from '../types/domain';
 
 type EquipmentForm = CreateEquipmentInput & { id?: string };
 const emptyForm: EquipmentForm = { client_id:'',category:'Notebook',brand:'',model:'',serial_number:'',accessories:'',notes:'' };
+const emptyQuickClient={name:'',document:'',phone:''};
 
 function toForm(item: Equipment): EquipmentForm {
   return {
@@ -30,23 +32,45 @@ function toForm(item: Equipment): EquipmentForm {
 
 export function EquipmentPage(){
   const { user, mode }=useAuth();
-  const { clients,equipment,orders,loading,error:contextError,createEquipment,refresh }=usePrimeTech();
-  const [search,setSearch]=useState('');
+  const { clients,equipment,orders,loading,error:contextError,createClient,createEquipment,refresh }=usePrimeTech();
+  const [searchParams]=useSearchParams();
+  const [search,setSearch]=useState(()=>searchParams.get('busca')??'');
   const [open,setOpen,clearOpen]=useSessionDraft('equipment-form-open',false);
   const [form,setForm,clearForm]=useSessionDraft<EquipmentForm>('equipment-form',emptyForm);
+  const [quickClientOpen,setQuickClientOpen]=useState(false);
+  const [quickClient,setQuickClient]=useState(emptyQuickClient);
   const [busy,setBusy]=useState(false); const [formError,setFormError]=useState('');
+
+  useEffect(()=>{setSearch(searchParams.get('busca')??'');},[searchParams]);
 
   const filteredEquipment=useMemo(()=>{const term=search.trim().toLowerCase();if(!term)return equipment;return equipment.filter((item)=>{const client=clients.find((c)=>c.id===item.client_id);return [equipmentCode(item.technical_number),client?.name,item.category,item.brand,item.model,item.serial_number,item.accessories].filter(Boolean).join(' ').toLowerCase().includes(term);});},[clients,equipment,search]);
 
   function handleOpen(){
     setFormError('');
-    if(!clients.length){setFormError('Cadastre um cliente antes de cadastrar um equipamento.');setOpen(true);return;}
     clearForm();
     setForm({...emptyForm,client_id:clients[0]?.id??''});
+    setQuickClientOpen(false);
     setOpen(true);
   }
-  function openEdit(item: Equipment){setForm(toForm(item));setFormError('');setOpen(true);}
-  function handleClose(){clearOpen();clearForm();setFormError('');}
+  function openEdit(item: Equipment){setForm(toForm(item));setFormError('');setQuickClientOpen(false);setOpen(true);}
+  function handleClose(){clearOpen();clearForm();setQuickClientOpen(false);setQuickClient(emptyQuickClient);setFormError('');}
+
+  async function createQuickClient(){
+    if(!quickClient.name.trim())return setFormError('Informe o nome do cliente.');
+    setBusy(true);setFormError('');
+    try{
+      const created=await createClient({
+        person_type:quickClient.document.replace(/\D/g,'').length>11?'pj':'pf',
+        name:quickClient.name.trim(),
+        document:quickClient.document.replace(/\D/g,'')||undefined,
+        phone:quickClient.phone.trim()||undefined,
+      });
+      setForm((current)=>({...current,client_id:created.id}));
+      setQuickClient(emptyQuickClient);
+      setQuickClientOpen(false);
+    }catch(cause){setFormError(cause instanceof Error?cause.message:'Não foi possível cadastrar o cliente.');}
+    finally{setBusy(false);}
+  }
 
   async function handleSubmit(event:FormEvent<HTMLFormElement>){
     event.preventDefault();
@@ -85,11 +109,31 @@ export function EquipmentPage(){
   }
 
   return <>
-    <PageHeader eyebrow="Comercial" title="Equipamentos" description="Cadastro e histórico dos equipamentos vinculados aos clientes e às Ordens de Serviço. Cadastros de teste também podem ser editados." actions={can(user,'equipment.manage')?<button type="button" className="primary-button" onClick={handleOpen}><Plus size={17}/>Novo equipamento</button>:undefined}/>
+    <PageHeader eyebrow="Comercial" title="Equipamentos" description="Cadastro e histórico dos equipamentos vinculados aos clientes e às Ordens de Serviço. O botão + permite cadastrar o proprietário sem abandonar o equipamento." actions={can(user,'equipment.manage')?<button type="button" className="primary-button" onClick={handleOpen}><Plus size={17}/>Novo equipamento</button>:undefined}/>
     {open&&<section className="panel" style={{marginBottom:18}}><div className="panel-head"><div><span className="eyebrow">Cadastro</span><h2>{form.id?'Editar equipamento':'Novo equipamento'}</h2></div><button type="button" className="ghost-button small" onClick={handleClose}><X size={16}/>Fechar</button></div>
-      {clients.length>0&&<form onSubmit={handleSubmit} style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:14}}>
-        <label><FieldLabel>Cliente proprietário</FieldLabel><select required value={form.client_id} onChange={(e)=>setForm((v)=>({...v,client_id:e.target.value}))} style={fieldStyle}><option value="">Selecione o cliente</option>{clients.map((c)=><option key={c.id} value={c.id}>{c.name}</option>)}</select></label>
+      <form onSubmit={handleSubmit} style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:14}}>
+        <label>
+          <FieldLabel>Cliente proprietário</FieldLabel>
+          <div className="select-with-action">
+            <select required value={form.client_id} onChange={(e)=>setForm((v)=>({...v,client_id:e.target.value}))} style={fieldStyle}>
+              <option value="">Selecione o cliente</option>
+              {clients.map((c)=><option key={c.id} value={c.id}>{c.name}{c.document?` · ${c.document}`:''}</option>)}
+            </select>
+            {can(user,'clients.manage')&&<button type="button" className="select-add-button" title="Cadastrar cliente sem sair desta tela" onClick={()=>setQuickClientOpen((value)=>!value)}><Plus size={18}/></button>}
+          </div>
+        </label>
         <label><FieldLabel>Categoria</FieldLabel><select required value={form.category} onChange={(e)=>setForm((v)=>({...v,category:e.target.value}))} style={fieldStyle}>{['Notebook','Desktop','Impressora','Smartphone','Tablet','Monitor','Nobreak','Servidor','Outro'].map((v)=><option key={v}>{v}</option>)}</select></label>
+
+        {quickClientOpen&&<div className="inline-create-card" style={{gridColumn:'1 / -1'}}>
+          <div className="panel-head"><div><span className="eyebrow">Cadastro rápido</span><h3>Novo cliente</h3></div><button type="button" className="ghost-button small" onClick={()=>setQuickClientOpen(false)}><X size={15}/>Fechar</button></div>
+          <div className="form-grid">
+            <label><span>Nome / Razão social</span><input value={quickClient.name} onChange={(e)=>setQuickClient((v)=>({...v,name:e.target.value}))} placeholder="Nome do cliente"/></label>
+            <label><span>CPF / CNPJ</span><input value={quickClient.document} onChange={(e)=>setQuickClient((v)=>({...v,document:e.target.value}))} placeholder="Somente números ou formatado"/></label>
+            <label><span>Telefone / WhatsApp</span><input value={quickClient.phone} onChange={(e)=>setQuickClient((v)=>({...v,phone:e.target.value}))} placeholder="Contato"/></label>
+          </div>
+          <div className="quick-actions" style={{marginTop:12}}><button type="button" disabled={busy||!quickClient.name.trim()} onClick={()=>void createQuickClient()}><Save size={15}/>Salvar e selecionar</button></div>
+        </div>}
+
         <label><FieldLabel>Marca</FieldLabel><input value={form.brand??''} onChange={(e)=>setForm((v)=>({...v,brand:e.target.value}))} placeholder="Ex.: Dell, Epson, Lenovo" style={fieldStyle}/></label>
         <label><FieldLabel>Modelo</FieldLabel><input value={form.model??''} onChange={(e)=>setForm((v)=>({...v,model:e.target.value}))} placeholder="Modelo do equipamento" style={fieldStyle}/></label>
         <label><FieldLabel>Número de série</FieldLabel><input value={form.serial_number??''} onChange={(e)=>setForm((v)=>({...v,serial_number:e.target.value}))} placeholder="Número de série" style={fieldStyle}/><small style={{display:'block',marginTop:5,color:'var(--muted)',fontSize:11}}>O Cronos impede número de série duplicado.</small></label>
@@ -97,8 +141,7 @@ export function EquipmentPage(){
         <label style={{gridColumn:'1 / -1'}}><FieldLabel>Estado físico / observações</FieldLabel><textarea value={form.notes??''} onChange={(e)=>setForm((v)=>({...v,notes:e.target.value}))} placeholder="Riscos, trincas, peças faltantes..." style={{...fieldStyle,minHeight:90,resize:'vertical'}}/></label>
         {formError&&<FormError>{formError}</FormError>}
         <div style={{gridColumn:'1 / -1',display:'flex',justifyContent:'flex-end',gap:10}}><button type="button" className="ghost-button" onClick={handleClose} disabled={busy}>Cancelar</button><button className="primary-button" disabled={busy||!form.client_id||!form.category.trim()}>{busy?'Salvando...':form.id?'Salvar alterações':'Salvar equipamento'}</button></div>
-      </form>}
-      {!clients.length&&formError&&<><FormError>{formError}</FormError><p style={{marginTop:14,color:'var(--muted)',fontSize:13}}>O equipamento sempre precisa pertencer a um cliente cadastrado.</p></>}
+      </form>
     </section>}
 
     {contextError&&<section className="notice" style={{marginBottom:16}}><div><strong>Não foi possível carregar todos os dados</strong><p>{contextError}</p></div></section>}
