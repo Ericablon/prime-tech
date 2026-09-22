@@ -8,7 +8,7 @@ import {
   Trash2,
   Wrench,
 } from 'lucide-react';
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 
 import { PageHeader } from '../components/ui/PageHeader';
@@ -19,381 +19,156 @@ import { money, orderCode } from '../lib/formatters';
 import { can } from '../lib/permissions';
 import { supabase } from '../lib/supabase';
 
-const lockedStatuses = [
-  'approved',
-  'in_repair',
-  'waiting_part',
-  'quality_check',
-  'ready_for_pickup',
-  'delivered',
-  'cancelled',
-];
+const lockedStatuses = ['approved','in_repair','waiting_part','quality_check','ready_for_pickup','delivered','cancelled'];
+
+type ServiceRule = { id: string; name: string; national_tax_code?: string | null; active: boolean };
 
 export function OrderItemsPage() {
   const { id } = useParams();
   const { user, mode } = useAuth();
-  const { orders, stock, loading, refresh } = usePrimeTech();
+  const { orders, stock, companyId, loading, refresh } = usePrimeTech();
 
   const [saving, setSaving] = useState(false);
   const [localError, setLocalError] = useState('');
+  const [serviceRules, setServiceRules] = useState<ServiceRule[]>([]);
   const [form, setForm] = useState({
     kind: 'service' as 'service' | 'part',
     stockItemId: '',
+    serviceRuleId: '',
     description: '',
     quantity: '1',
     unitPrice: '',
   });
 
+  useEffect(() => {
+    if (mode !== 'supabase' || !supabase || !companyId) { setServiceRules([]); return; }
+    let alive = true;
+    void supabase
+      .from('fiscal_service_rules')
+      .select('id, name, national_tax_code, active')
+      .eq('company_id', companyId)
+      .eq('active', true)
+      .order('name')
+      .then(({ data, error }) => {
+        if (!alive) return;
+        if (error) { setServiceRules([]); return; }
+        setServiceRules((data ?? []) as ServiceRule[]);
+      });
+    return () => { alive = false; };
+  }, [companyId, mode]);
+
   const order = orders.find((item) => item.id === id);
   const items = order?.items ?? [];
-
-  const canEdit = Boolean(
-    order
-    && !lockedStatuses.includes(order.status)
-    && (can(user, 'orders.commercial') || can(user, 'orders.tech')),
-  );
-
-  const totals = useMemo(() => {
-    return items.reduce(
-      (acc, item) => {
-        const total = Number(item.quantity) * Number(item.unit_price);
-        if (item.kind === 'service') acc.services += total;
-        else acc.parts += total;
-        return acc;
-      },
-      { services: 0, parts: 0 },
-    );
-  }, [items]);
-
+  const canEdit = Boolean(order && !lockedStatuses.includes(order.status) && (can(user, 'orders.commercial') || can(user, 'orders.tech')));
+  const totals = useMemo(() => items.reduce((acc, item) => {
+    const total = Number(item.quantity) * Number(item.unit_price);
+    if (item.kind === 'service') acc.services += total; else acc.parts += total;
+    return acc;
+  }, { services: 0, parts: 0 }), [items]);
   const selectedStock = stock.find((item) => item.id === form.stockItemId);
 
-  function changeKind(kind: 'service' | 'part') {
-    setLocalError('');
-    setForm({
-      kind,
-      stockItemId: '',
-      description: '',
-      quantity: '1',
-      unitPrice: '',
-    });
+  function reset(kind = form.kind) {
+    setForm({ kind, stockItemId: '', serviceRuleId: '', description: '', quantity: '1', unitPrice: '' });
   }
+
+  function changeKind(kind: 'service' | 'part') { setLocalError(''); reset(kind); }
 
   function changeStockItem(stockItemId: string) {
     const item = stock.find((candidate) => candidate.id === stockItemId);
-    setForm((current) => ({
-      ...current,
-      stockItemId,
-      description: item?.name ?? '',
-      unitPrice: item ? String(Number(item.sale_price ?? 0)) : '',
-    }));
+    setForm((current) => ({ ...current, stockItemId, description: item?.name ?? '', unitPrice: item ? String(Number(item.sale_price ?? 0)) : '' }));
+  }
+
+  function changeServiceRule(serviceRuleId: string) {
+    const rule = serviceRules.find((candidate) => candidate.id === serviceRuleId);
+    setForm((current) => ({ ...current, serviceRuleId, description: current.description || rule?.name || '' }));
   }
 
   async function submit(event: FormEvent) {
     event.preventDefault();
     if (!order || !canEdit) return;
-
     const quantity = Number(form.quantity.replace(',', '.'));
     const unitPrice = Number(form.unitPrice.replace(',', '.'));
+    if (!Number.isFinite(quantity) || quantity <= 0) return setLocalError('Informe uma quantidade maior que zero.');
+    if (!Number.isFinite(unitPrice) || unitPrice < 0) return setLocalError('Informe um valor unitário válido.');
+    if (!form.description.trim()) return setLocalError('Informe a descrição do item.');
+    if (form.kind === 'part' && !form.stockItemId) return setLocalError('Selecione o produto do estoque.');
+    if (form.kind === 'service' && !form.serviceRuleId) return setLocalError('Selecione a regra fiscal do serviço para permitir a NFS-e.');
+    if (mode !== 'supabase' || !supabase) return setLocalError('A composição da OS exige conexão com o Supabase.');
 
-    if (!Number.isFinite(quantity) || quantity <= 0) {
-      setLocalError('Informe uma quantidade maior que zero.');
-      return;
-    }
-    if (!Number.isFinite(unitPrice) || unitPrice < 0) {
-      setLocalError('Informe um valor unitário válido.');
-      return;
-    }
-    if (!form.description.trim()) {
-      setLocalError('Informe a descrição do item.');
-      return;
-    }
-    if (form.kind === 'part' && !form.stockItemId) {
-      setLocalError('Selecione o produto/peça do estoque para permitir a baixa automática.');
-      return;
-    }
-    if (mode !== 'supabase' || !supabase) {
-      setLocalError('A composição da OS exige o ambiente conectado ao Supabase.');
-      return;
-    }
-
-    setSaving(true);
-    setLocalError('');
-
+    setSaving(true); setLocalError('');
     try {
-      const stockItem = form.kind === 'part'
-        ? stock.find((item) => item.id === form.stockItemId)
-        : undefined;
-
-      const { error } = await supabase
-        .from('service_order_items')
-        .insert({
-          service_order_id: order.id,
-          kind: form.kind,
-          description: form.description.trim(),
-          quantity,
-          unit_price: unitPrice,
-          cost_price: stockItem ? Number(stockItem.cost_price ?? 0) : null,
-          stock_item_id: stockItem?.id ?? null,
-        });
-
-      if (error) throw error;
-
-      await refresh();
-      setForm({
+      const stockItem = form.kind === 'part' ? stock.find((item) => item.id === form.stockItemId) : undefined;
+      const { error } = await supabase.from('service_order_items').insert({
+        service_order_id: order.id,
         kind: form.kind,
-        stockItemId: '',
-        description: '',
-        quantity: '1',
-        unitPrice: '',
+        description: form.description.trim(),
+        quantity,
+        unit_price: unitPrice,
+        cost_price: stockItem ? Number(stockItem.cost_price ?? 0) : null,
+        stock_item_id: stockItem?.id ?? null,
+        fiscal_service_rule_id: form.kind === 'service' ? form.serviceRuleId : null,
       });
+      if (error) throw error;
+      await refresh();
+      reset(form.kind);
     } catch (cause) {
       setLocalError(cause instanceof Error ? cause.message : 'Não foi possível adicionar o item à OS.');
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
   async function removeItem(itemId: string) {
     if (!order || !canEdit || mode !== 'supabase' || !supabase) return;
-
-    setSaving(true);
-    setLocalError('');
+    setSaving(true); setLocalError('');
     try {
-      const { error } = await supabase
-        .from('service_order_items')
-        .delete()
-        .eq('id', itemId)
-        .eq('service_order_id', order.id);
-
+      const { error } = await supabase.from('service_order_items').delete().eq('id', itemId).eq('service_order_id', order.id);
       if (error) throw error;
       await refresh();
     } catch (cause) {
       setLocalError(cause instanceof Error ? cause.message : 'Não foi possível remover o item da OS.');
-    } finally {
-      setSaving(false);
-    }
+    } finally { setSaving(false); }
   }
 
-  if (loading) {
-    return <div className="empty-state"><Wrench size={38} /><h3>Carregando OS</h3></div>;
-  }
+  if (loading) return <div className="empty-state"><Wrench size={38} /><h3>Carregando OS</h3></div>;
+  if (!order) return <section className="panel empty-state"><AlertTriangle size={38} /><h3>Ordem de Serviço não encontrada</h3><Link to="/ordens" className="ghost-button"><ArrowLeft size={16} /> Voltar</Link></section>;
 
-  if (!order) {
-    return (
-      <section className="panel empty-state">
-        <AlertTriangle size={38} />
-        <h3>Ordem de Serviço não encontrada</h3>
-        <Link to="/ordens" className="ghost-button"><ArrowLeft size={16} /> Voltar</Link>
-      </section>
-    );
-  }
+  return <>
+    <PageHeader
+      eyebrow="Orçamento da OS"
+      title={`${orderCode(order.order_number)} · Serviços e produtos`}
+      description="Monte serviço e produtos na mesma OS. Produtos controlam estoque; serviços levam a regra fiscal necessária para NFS-e."
+      actions={<div className="quick-actions"><Link to={`/ordens/${order.id}`} className="ghost-button"><ArrowLeft size={16} /> Ver OS</Link><StatusBadge status={order.status} /></div>}
+    />
 
-  return (
-    <>
-      <PageHeader
-        eyebrow="Orçamento da OS"
-        title={`${orderCode(order.order_number)} · Serviços e produtos`}
-        description="Monte a mesma OS com mão de obra e produtos do estoque. Produtos vinculados ao estoque entram no controle automático de reserva e baixa."
-        actions={(
-          <div className="quick-actions">
-            <Link to={`/ordens/${order.id}`} className="ghost-button"><ArrowLeft size={16} /> Ver OS</Link>
-            <StatusBadge status={order.status} />
-          </div>
-        )}
-      />
+    {localError && <section className="notice" style={{ marginBottom: 16 }}><AlertTriangle size={20} /><div><strong>Não foi possível concluir</strong><p>{localError}</p></div></section>}
 
-      {localError && (
-        <section className="notice" style={{ marginBottom: 16 }}>
-          <AlertTriangle size={20} />
-          <div><strong>Não foi possível concluir</strong><p>{localError}</p></div>
-        </section>
-      )}
+    <section className="notice" style={{ marginBottom: 20 }}><Boxes size={20} /><div><strong>Estoque + fiscal integrados</strong><p>Produtos da OS são reservados/baixados automaticamente e levam NCM/CFOP/tributação do cadastro. Serviços levam a regra fiscal escolhida para emissão de NFS-e.</p></div></section>
 
-      <section className="notice" style={{ marginBottom: 20 }}>
-        <Boxes size={20} />
-        <div>
-          <strong>Estoque automático por OS</strong>
-          <p>
-            Ao aprovar a OS, os produtos do estoque são reservados. Quando a OS é concluída e fica pronta para retirada,
-            o saldo físico é baixado automaticamente e a movimentação fica registrada com data e número da OS.
-          </p>
+    {canEdit && <section className="panel" style={{ marginBottom: 20 }}>
+      <div className="panel-head"><div><span className="eyebrow">Composição</span><h2>Adicionar item</h2></div></div>
+      <form onSubmit={(event) => void submit(event)} style={{ display: 'grid', gap: 14 }}>
+        <div className="form-grid">
+          <label><span>Tipo</span><select value={form.kind} onChange={(e) => changeKind(e.target.value as 'service' | 'part')}><option value="service">Serviço / mão de obra</option><option value="part">Produto / peça do estoque</option></select></label>
+          {form.kind === 'part' && <label><span>Produto do estoque</span><select value={form.stockItemId} onChange={(e) => changeStockItem(e.target.value)}><option value="">Selecione...</option>{stock.filter((item) => item.active !== false).map((item) => <option key={item.id} value={item.id}>{item.name} · {item.sku} · disponível {Number(item.physical ?? 0)-Number(item.reserved ?? 0)}</option>)}</select></label>}
+          {form.kind === 'service' && <label><span>Regra fiscal do serviço</span><select value={form.serviceRuleId} onChange={(e) => changeServiceRule(e.target.value)}><option value="">Selecione...</option>{serviceRules.map((rule) => <option key={rule.id} value={rule.id}>{rule.name}{rule.national_tax_code ? ` · ${rule.national_tax_code}` : ''}</option>)}</select><small>{serviceRules.length ? 'Usada depois na NFS-e.' : 'Cadastre em Fiscal → Configuração fiscal.'}</small></label>}
+          <label><span>Descrição</span><input value={form.description} onChange={(e) => setForm((v) => ({ ...v, description: e.target.value }))} placeholder={form.kind === 'service' ? 'Ex.: Limpeza de cabeçote' : 'Produto selecionado'} /></label>
+          <label><span>Quantidade</span><input type="number" min="0.01" step="0.01" value={form.quantity} onChange={(e) => setForm((v) => ({ ...v, quantity: e.target.value }))} /></label>
+          <label><span>Valor unitário</span><input type="number" min="0" step="0.01" value={form.unitPrice} onChange={(e) => setForm((v) => ({ ...v, unitPrice: e.target.value }))} /></label>
+          {form.kind === 'part' && selectedStock && <div className="notice" style={{ marginBottom: 0 }}><PackagePlus size={18} /><div><strong>{selectedStock.name}</strong><p>Físico {selectedStock.physical} · reservado {selectedStock.reserved} · disponível {Math.max(selectedStock.physical-selectedStock.reserved,0)}</p></div></div>}
         </div>
-      </section>
+        <div className="quick-actions"><button type="submit" disabled={saving}><PlusCircle size={16} /> {saving ? 'Adicionando...' : 'Adicionar à OS'}</button></div>
+      </form>
+    </section>}
 
-      {canEdit && (
-        <section className="panel" style={{ marginBottom: 20 }}>
-          <div className="panel-head">
-            <div><span className="eyebrow">Composição</span><h2>Adicionar item</h2></div>
-          </div>
+    {!canEdit && <section className="notice" style={{ marginBottom: 20 }}><CheckCircle2 size={20} /><div><strong>Composição bloqueada</strong><p>Após a aprovação, os itens ficam protegidos para garantir orçamento, estoque e fiscal.</p></div></section>}
 
-          <form onSubmit={(event) => void submit(event)} style={{ display: 'grid', gap: 14 }}>
-            <div className="form-grid">
-              <label>
-                <span>Tipo</span>
-                <select value={form.kind} onChange={(event) => changeKind(event.target.value as 'service' | 'part')}>
-                  <option value="service">Serviço / mão de obra</option>
-                  <option value="part">Produto / peça do estoque</option>
-                </select>
-              </label>
-
-              {form.kind === 'part' && (
-                <label>
-                  <span>Produto do estoque</span>
-                  <select value={form.stockItemId} onChange={(event) => changeStockItem(event.target.value)}>
-                    <option value="">Selecione...</option>
-                    {stock.filter((item) => item.active !== false).map((item) => {
-                      const available = Number(item.physical ?? 0) - Number(item.reserved ?? 0);
-                      return (
-                        <option key={item.id} value={item.id}>
-                          {item.name} · {item.sku} · disponível {available}
-                        </option>
-                      );
-                    })}
-                  </select>
-                </label>
-              )}
-
-              <label>
-                <span>Descrição</span>
-                <input
-                  value={form.description}
-                  onChange={(event) => setForm((current) => ({ ...current, description: event.target.value }))}
-                  placeholder={form.kind === 'service' ? 'Ex.: Limpeza de cabeçote' : 'Produto selecionado do estoque'}
-                />
-              </label>
-
-              <label>
-                <span>Quantidade</span>
-                <input
-                  type="number"
-                  min="0.01"
-                  step="0.01"
-                  value={form.quantity}
-                  onChange={(event) => setForm((current) => ({ ...current, quantity: event.target.value }))}
-                />
-              </label>
-
-              <label>
-                <span>Valor unitário</span>
-                <input
-                  type="number"
-                  min="0"
-                  step="0.01"
-                  value={form.unitPrice}
-                  onChange={(event) => setForm((current) => ({ ...current, unitPrice: event.target.value }))}
-                />
-              </label>
-
-              {form.kind === 'part' && selectedStock && (
-                <div className="notice" style={{ marginBottom: 0 }}>
-                  <PackagePlus size={18} />
-                  <div>
-                    <strong>{selectedStock.name}</strong>
-                    <p>
-                      Físico {selectedStock.physical} · reservado {selectedStock.reserved} · disponível {Math.max(selectedStock.physical - selectedStock.reserved, 0)}
-                    </p>
-                  </div>
-                </div>
-              )}
-            </div>
-
-            <div className="quick-actions">
-              <button type="submit" disabled={saving}>
-                <PlusCircle size={16} /> {saving ? 'Adicionando...' : 'Adicionar à OS'}
-              </button>
-            </div>
-          </form>
-        </section>
-      )}
-
-      {!canEdit && (
-        <section className="notice" style={{ marginBottom: 20 }}>
-          <CheckCircle2 size={20} />
-          <div>
-            <strong>Composição bloqueada</strong>
-            <p>Após a aprovação, os itens ficam protegidos para garantir a rastreabilidade do orçamento, estoque e financeiro.</p>
-          </div>
-        </section>
-      )}
-
-      <section className="panel">
-        <div className="panel-head">
-          <div><span className="eyebrow">Itens da OS</span><h2>Orçamento completo</h2></div>
-          <strong>{money.format(totals.services + totals.parts)}</strong>
-        </div>
-
-        {items.length === 0 ? (
-          <div className="empty-state">
-            <PackagePlus size={38} />
-            <h3>Nenhum item informado</h3>
-            <p>Adicione o serviço e os produtos que fazem parte desta OS.</p>
-          </div>
-        ) : (
-          <div className="table-wrap">
-            <table>
-              <thead>
-                <tr>
-                  <th>Tipo</th>
-                  <th>Descrição</th>
-                  <th>Qtd.</th>
-                  <th>Unitário</th>
-                  <th>Total</th>
-                  <th>Estoque</th>
-                  {canEdit && <th>Ação</th>}
-                </tr>
-              </thead>
-              <tbody>
-                {items.map((item) => {
-                  const stockItem = item.stock_item_id
-                    ? stock.find((candidate) => candidate.id === item.stock_item_id)
-                    : undefined;
-                  const available = stockItem
-                    ? Number(stockItem.physical ?? 0) - Number(stockItem.reserved ?? 0)
-                    : null;
-
-                  return (
-                    <tr key={item.id}>
-                      <td>{item.kind === 'service' ? 'Serviço' : 'Produto'}</td>
-                      <td>
-                        <strong>{item.description}</strong>
-                        {stockItem && <small>{stockItem.sku}</small>}
-                      </td>
-                      <td>{Number(item.quantity)}</td>
-                      <td>{money.format(Number(item.unit_price))}</td>
-                      <td><strong>{money.format(Number(item.quantity) * Number(item.unit_price))}</strong></td>
-                      <td>
-                        {stockItem ? (
-                          <span className={`stock-state ${Number(available) >= Number(item.quantity) ? 'ok' : 'critical'}`}>
-                            {Number(available) >= Number(item.quantity) ? `Disponível ${available}` : `Insuficiente · ${available}`}
-                          </span>
-                        ) : '—'}
-                      </td>
-                      {canEdit && (
-                        <td>
-                          <button
-                            type="button"
-                            className="ghost-button"
-                            disabled={saving}
-                            onClick={() => void removeItem(item.id)}
-                          >
-                            <Trash2 size={15} /> Remover
-                          </button>
-                        </td>
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
-        )}
-
-        <div className="mini-kpis" style={{ marginTop: 18 }}>
-          <div><span>{money.format(totals.services)}</span><small>Serviços</small></div>
-          <div><span>{money.format(totals.parts)}</span><small>Produtos / peças</small></div>
-          <div><span>{money.format(totals.services + totals.parts)}</span><small>Total da OS</small></div>
-        </div>
-      </section>
-    </>
-  );
+    <section className="panel">
+      <div className="panel-head"><div><span className="eyebrow">Itens da OS</span><h2>Orçamento completo</h2></div><strong>{money.format(totals.services+totals.parts)}</strong></div>
+      {items.length === 0 ? <div className="empty-state"><PackagePlus size={38} /><h3>Nenhum item informado</h3></div> : <div className="table-wrap"><table><thead><tr><th>Tipo</th><th>Descrição</th><th>Qtd.</th><th>Unitário</th><th>Total</th><th>Fiscal/estoque</th>{canEdit && <th>Ação</th>}</tr></thead><tbody>{items.map((item) => {
+        const stockItem = item.stock_item_id ? stock.find((candidate) => candidate.id === item.stock_item_id) : undefined;
+        const available = stockItem ? Number(stockItem.physical ?? 0)-Number(stockItem.reserved ?? 0) : null;
+        return <tr key={item.id}><td>{item.kind === 'service' ? 'Serviço' : 'Produto'}</td><td><strong>{item.description}</strong>{stockItem && <small>{stockItem.sku}</small>}</td><td>{Number(item.quantity)}</td><td>{money.format(Number(item.unit_price))}</td><td><strong>{money.format(Number(item.quantity)*Number(item.unit_price))}</strong></td><td>{stockItem ? <span className={`stock-state ${Number(available)>=Number(item.quantity)?'ok':'critical'}`}>{Number(available)>=Number(item.quantity)?`Disponível ${available}`:`Insuficiente · ${available}`}</span> : <span className={`stock-state ${item.fiscal_service_rule_id?'ok':'critical'}`}>{item.fiscal_service_rule_id?'Regra fiscal vinculada':'Sem regra fiscal'}</span>}</td>{canEdit && <td><button type="button" className="ghost-button" disabled={saving} onClick={() => void removeItem(item.id)}><Trash2 size={15} /> Remover</button></td>}</tr>;
+      })}</tbody></table></div>}
+      <div className="mini-kpis" style={{ marginTop: 18 }}><div><span>{money.format(totals.services)}</span><small>Serviços</small></div><div><span>{money.format(totals.parts)}</span><small>Produtos / peças</small></div><div><span>{money.format(totals.services+totals.parts)}</span><small>Total da OS</small></div></div>
+    </section>
+  </>;
 }
