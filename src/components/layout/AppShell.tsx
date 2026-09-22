@@ -2,14 +2,18 @@ import {
   ChevronDown,
   LogOut,
   Menu,
+  Moon,
   Search,
+  Sun,
   X,
 } from 'lucide-react';
 import { useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../../contexts/AuthContext';
 import { usePrimeTech } from '../../contexts/PrimeTechContext';
+import { useTheme } from '../../contexts/ThemeContext';
 import { orderCode } from '../../lib/formatters';
+import { NotificationCenter } from './NotificationCenter';
 import { Sidebar } from './Sidebar';
 
 type GlobalResult = {
@@ -45,6 +49,7 @@ function normalize(value: unknown) {
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth();
   const { clients, equipment, orders, stock, finance } = usePrimeTech();
+  const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
   const searchRef = useRef<HTMLInputElement>(null);
   const [mobile, setMobile] = useState(false);
@@ -225,7 +230,7 @@ export function AppShell({ children }: { children: ReactNode }) {
               <div style={{
                 position: 'absolute', top: 'calc(100% + 8px)', left: 0, right: 0, zIndex: 80,
                 maxHeight: 'min(520px, 70vh)', overflowY: 'auto', border: '1px solid var(--line)',
-                borderRadius: 14, background: '#081322', boxShadow: '0 18px 50px rgba(0,0,0,.35)', padding: 8,
+                borderRadius: 14, background: 'var(--surface)', boxShadow: '0 18px 50px rgba(0,0,0,.25)', padding: 8,
               }}>
                 {results.length ? grouped.map(([section, items]) => (
                   <div key={section} style={{ marginBottom: 6 }}>
@@ -235,7 +240,7 @@ export function AppShell({ children }: { children: ReactNode }) {
                         key={result.key}
                         type="button"
                         onClick={() => openResult(result)}
-                        style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, padding: '10px 12px', border: 0, borderRadius: 10, background: 'transparent', color: '#fff', textAlign: 'left', cursor: 'pointer' }}
+                        style={{ width: '100%', display: 'flex', flexDirection: 'column', alignItems: 'flex-start', gap: 3, padding: '10px 12px', border: 0, borderRadius: 10, background: 'transparent', color: 'var(--premium-text)', textAlign: 'left', cursor: 'pointer' }}
                       >
                         <strong style={{ fontSize: 13 }}>{result.label}</strong>
                         <small style={{ color: 'var(--muted)' }}>{result.subtitle}</small>
@@ -250,6 +255,18 @@ export function AppShell({ children }: { children: ReactNode }) {
           </div>
 
           <div className="top-actions">
+            <button
+              type="button"
+              className="icon-button"
+              onClick={toggleTheme}
+              title={theme === 'dark' ? 'Usar tema claro' : 'Usar tema escuro'}
+              aria-label={theme === 'dark' ? 'Ativar tema claro' : 'Ativar tema escuro'}
+            >
+              {theme === 'dark' ? <Sun size={18} /> : <Moon size={18} />}
+            </button>
+
+            <NotificationCenter />
+
             <div className="profile-menu-wrap">
               <button className="profile-trigger" onClick={() => setProfileOpen((value) => !value)} aria-expanded={profileOpen}>
                 <div className="avatar premium-avatar">{initials}</div>
