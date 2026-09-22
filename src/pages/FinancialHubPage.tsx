@@ -2,8 +2,8 @@ import {
   AlertTriangle, ArrowDownCircle, ArrowUpCircle, Banknote, CheckCircle2, CircleDollarSign,
   FileText, ListPlus, PlusCircle, Printer, Search, TrendingUp, WalletCards, X,
 } from 'lucide-react';
-import { type FormEvent, useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { PrintableReport } from '../components/reports/PrintableReport';
 import { MetricCard } from '../components/ui/MetricCard';
@@ -25,12 +25,19 @@ function isCurrentMonth(value:string){const d=new Date(value),n=new Date();retur
 export function FinancialHubPage(){
   const { user }=useAuth();
   const { finance,installments,orders,company,loading,error,addFinancialEntry,createPaymentPlan,settleInstallment }=usePrimeTech();
+  const [searchParams]=useSearchParams();
   const [view,setView]=useState<View>('overview');
   const [showEntryForm,setShowEntryForm,clearShowEntry]=useSessionDraft('finance-entry-open',false);
   const [showPlanForm,setShowPlanForm,clearShowPlan]=useSessionDraft('finance-plan-open',false);
   const [entryForm,setEntryForm,clearEntry]=useSessionDraft<EntryForm>('finance-entry-form',initialEntry);
   const [planForm,setPlanForm,clearPlan]=useSessionDraft<PlanForm>('finance-plan-form',initialPlan);
-  const [saving,setSaving]=useState(false); const [localError,setLocalError]=useState(''); const [search,setSearch]=useState(''); const [printOpen,setPrintOpen]=useState(false);
+  const [saving,setSaving]=useState(false); const [localError,setLocalError]=useState(''); const [search,setSearch]=useState(()=>searchParams.get('busca')??''); const [printOpen,setPrintOpen]=useState(false);
+
+  useEffect(()=>{
+    const term=searchParams.get('busca')??'';
+    setSearch(term);
+    if(term)setView('realized');
+  },[searchParams]);
 
   const monthEntries=useMemo(()=>finance.filter((entry)=>isCurrentMonth(entry.occurred_at)),[finance]);
   const revenues=monthEntries.filter((e)=>e.type==='income').reduce((s,e)=>s+Number(e.amount),0);
