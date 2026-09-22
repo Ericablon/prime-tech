@@ -53,6 +53,13 @@ export type ItemKind =
   | 'part';
 
 /**
+ * Código configurável de especialidade técnica.
+ * O banco começa com `impressoras` e `computadores`, mas aceita novas
+ * especialidades sem exigir alteração no frontend.
+ */
+export type TechnicalSpecialtyCode = string;
+
+/**
  * Status geral da OS.
  *
  * Mantemos estados legados por compatibilidade
@@ -119,6 +126,9 @@ export interface UserProfile {
   company_id?: string;
   branch_id?: string;
 
+  /** Especialidades habilitadas para o técnico no tenant ativo. */
+  technical_specialty_codes?: TechnicalSpecialtyCode[];
+
   created_at?: string;
   updated_at?: string;
 }
@@ -154,6 +164,7 @@ export interface Equipment {
   client_id: string;
 
   category: string;
+  technical_specialty_code?: TechnicalSpecialtyCode | null;
 
   brand?: string | null;
   model?: string | null;
@@ -200,6 +211,7 @@ export interface ServiceOrder {
   equipment_id?: string;
 
   assigned_technician_id?: string | null;
+  technical_specialty_code?: TechnicalSpecialtyCode | null;
 
   /**
    * Campos prontos para exibição.
@@ -268,6 +280,8 @@ export interface ServiceOrder {
    * Programação.
    */
   scheduled_at?: string | null;
+  scheduled_duration_minutes?: number | null;
+  schedule_notes?: string | null;
 
   /**
    * Linha do tempo técnica.
@@ -335,12 +349,15 @@ export interface FinancialEntry {
     | 'expense';
 
   category: string;
+  category_id?: string | null;
+  account_id?: string | null;
 
   description: string;
 
   amount: number;
 
   occurred_at: string;
+  competence_date?: string | null;
 
   service_order_id?: string | null;
 
@@ -353,6 +370,7 @@ export interface FinancialEntry {
 export interface PaymentInstallment {
   id: string;
 
+  company_id?: string;
   plan_id: string;
 
   installment_number: number;
@@ -365,12 +383,15 @@ export interface PaymentInstallment {
     | 'expense';
 
   category: string;
+  category_id?: string | null;
+  account_id?: string | null;
 
   description: string;
 
   amount: number;
 
   due_date: string;
+  competence_date?: string | null;
 
   payment_method: string;
 
@@ -464,6 +485,7 @@ export interface CreateEquipmentInput {
   client_id: string;
 
   category: string;
+  technical_specialty_code?: TechnicalSpecialtyCode | null;
 
   brand?: string;
   model?: string;
@@ -485,6 +507,7 @@ export interface CreateOrderInput {
 
   priority: Priority;
 
+  technical_specialty_code?: TechnicalSpecialtyCode | null;
   assigned_technician_id?: string | null;
 }
 
