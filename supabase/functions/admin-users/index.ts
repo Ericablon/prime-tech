@@ -57,33 +57,73 @@ Deno.serve(async (req) => {
     const body = await req.json() as RequestBody;
     if (!body.companyId) return json({ error: 'Empresa obrigatória.' }, 400);
 
-    const { data: callerAccess, error: accessError } = await admin
+    let callerAccess: { role_code: string; active: boolean; access_profile_id?: string | null } | null = null;
+    const modernCaller = await admin
       .from('user_company_access')
-      .select('role_code, active')
+      .select('role_code,active,access_profile_id')
       .eq('user_id', authData.user.id)
       .eq('company_id', body.companyId)
       .eq('active', true)
       .limit(1)
       .maybeSingle();
-    if (accessError) throw accessError;
+
+    if (!modernCaller.error) {
+      callerAccess = modernCaller.data as typeof callerAccess;
+    } else {
+      const legacyCaller = await admin
+        .from('user_company_access')
+        .select('role_code,active')
+        .eq('user_id', authData.user.id)
+        .eq('company_id', body.companyId)
+        .eq('active', true)
+        .limit(1)
+        .maybeSingle();
+      if (legacyCaller.error) throw legacyCaller.error;
+      callerAccess = legacyCaller.data as typeof callerAccess;
+    }
+
     if (!callerAccess) return json({ error: 'Usuário sem acesso à empresa.' }, 403);
 
-    const { data: directPermission, error: directPermissionError } = await callerClient.rpc(
-      'has_company_permission_public',
-      { p_company: body.companyId, p_permission: 'users.manage' },
-    );
-
-    let canManage = directPermission === true && !directPermissionError;
-    if (!canManage) {
+    let canManage = false;
+    if (callerAccess.access_profile_id) {
       const { data: permission, error: permissionError } = await admin
-        .from('role_permissions')
+        .from('access_profile_permissions')
         .select('permission_code')
-        .eq('role_code', String(callerAccess.role_code))
+        .eq('access_profile_id', callerAccess.access_profile_id)
         .eq('permission_code', 'users.manage')
         .maybeSingle();
       if (permissionError) throw permissionError;
       canManage = Boolean(permission);
+    } else {
+      const override = await admin
+        .from('company_role_overrides')
+        .select('role_code')
+        .eq('company_id', body.companyId)
+        .eq('role_code', callerAccess.role_code)
+        .maybeSingle();
+
+      if (!override.error && override.data) {
+        const { data: permission, error: permissionError } = await admin
+          .from('company_role_permissions')
+          .select('permission_code')
+          .eq('company_id', body.companyId)
+          .eq('role_code', callerAccess.role_code)
+          .eq('permission_code', 'users.manage')
+          .maybeSingle();
+        if (permissionError) throw permissionError;
+        canManage = Boolean(permission);
+      } else {
+        const { data: permission, error: permissionError } = await admin
+          .from('role_permissions')
+          .select('permission_code')
+          .eq('role_code', callerAccess.role_code)
+          .eq('permission_code', 'users.manage')
+          .maybeSingle();
+        if (permissionError) throw permissionError;
+        canManage = Boolean(permission);
+      }
     }
+
     if (!canManage) return json({ error: 'Seu perfil não pode gerenciar usuários.' }, 403);
 
     const allowedRoles: RoleCode[] = ['admin','gestor','atendimento','comercial','tecnico','estoque','financeiro','fiscal'];
@@ -125,14 +165,27 @@ Deno.serve(async (req) => {
       }
 
       const resolved = await resolveProfile();
-      const { data: targetAccess, error: targetError } = await admin
+      let targetAccess: { role_code: string; access_profile_id?: string | null; active: boolean } | null = null;
+      const modernTarget = await admin
         .from('user_company_access')
         .select('role_code,access_profile_id,active')
         .eq('user_id', body.userId)
         .eq('company_id', body.companyId)
         .limit(1)
         .maybeSingle();
-      if (targetError) throw targetError;
+      if (!modernTarget.error) {
+        targetAccess = modernTarget.data as typeof targetAccess;
+      } else {
+        const legacyTarget = await admin
+          .from('user_company_access')
+          .select('role_code,active')
+          .eq('user_id', body.userId)
+          .eq('company_id', body.companyId)
+          .limit(1)
+          .maybeSingle();
+        if (legacyTarget.error) throw legacyTarget.error;
+        targetAccess = legacyTarget.data as typeof targetAccess;
+      }
       if (!targetAccess) return json({ error: 'Usuário não está vinculado a esta empresa.' }, 404);
 
       const nextActive = body.active !== false;
@@ -162,13 +215,15 @@ Deno.serve(async (req) => {
         .eq('id', body.userId);
       if (profileUpdateError) throw profileUpdateError;
 
+      const accessUpdate: Record<string, unknown> = {
+        role_code: resolved.roleCode,
+        active: nextActive,
+      };
+      if (modernTarget.error === null) accessUpdate.access_profile_id = resolved.accessProfileId;
+
       const { error: companyAccessError } = await admin
         .from('user_company_access')
-        .update({
-          role_code: resolved.roleCode,
-          access_profile_id: resolved.accessProfileId,
-          active: nextActive,
-        })
+        .update(accessUpdate)
         .eq('user_id', body.userId)
         .eq('company_id', body.companyId);
       if (companyAccessError) throw companyAccessError;
@@ -220,14 +275,24 @@ Deno.serve(async (req) => {
     }, { onConflict: 'id' });
     if (profileError) throw profileError;
 
-    const { error: companyAccessError } = await admin.from('user_company_access').upsert({
+    const accessPayload: Record<string, unknown> = {
       user_id: invite.user.id,
       company_id: body.companyId,
       branch_id: branch.id,
       role_code: resolved.roleCode,
-      access_profile_id: resolved.accessProfileId,
       active: true,
-    }, { onConflict: 'user_id,company_id,branch_id' });
+    };
+
+    const accessProfileColumnCheck = await admin
+      .from('user_company_access')
+      .select('access_profile_id')
+      .limit(1);
+    if (!accessProfileColumnCheck.error) accessPayload.access_profile_id = resolved.accessProfileId;
+
+    const { error: companyAccessError } = await admin.from('user_company_access').upsert(
+      accessPayload,
+      { onConflict: 'user_id,company_id,branch_id' },
+    );
     if (companyAccessError) throw companyAccessError;
 
     return json({
