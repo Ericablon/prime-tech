@@ -1,4 +1,6 @@
-const runtimeBase = import.meta.env.DEV ? '/' : '/prime-tech/';
+const runtimeBase = import.meta.env.BASE_URL.endsWith('/')
+  ? import.meta.env.BASE_URL
+  : `${import.meta.env.BASE_URL}/`;
 
 export const brandLogo = `${runtimeBase}brand/prime-tech-logo.jpeg`;
 export const brandMark = `${runtimeBase}brand/cronos-mark.svg`;
