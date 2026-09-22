@@ -75,6 +75,7 @@ const groups: Group[] = [
     icon: FileText,
     children: [
       { to: '/fiscal', label: 'Painel fiscal / NF', permission: 'fiscal.view' },
+      { to: '/fiscal/configuracao', label: 'Configuração fiscal', permission: 'fiscal.settings' },
     ],
   },
   {
