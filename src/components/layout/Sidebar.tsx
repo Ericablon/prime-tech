@@ -65,22 +65,22 @@ const groups: Group[] = [
     label: 'Financeiro',
     icon: CircleDollarSign,
     children: [
-      { to: '/financeiro', label: 'Visão financeira', permission: 'finance.view' },
-      { to: '/financeiro/dre', label: 'DRE', permission: 'finance.dre' },
+      { to: '/financeiro', label: 'Gestão financeira', permission: 'finance.view' },
+      { to: '/financeiro/dre', label: 'DRE gerencial', permission: 'finance.dre' },
     ],
   },
   {
     label: 'Fiscal',
     icon: FileText,
     children: [
-      { to: '/fiscal', label: 'Painel fiscal', permission: 'fiscal.view' },
+      { to: '/fiscal', label: 'Painel fiscal / NF', permission: 'fiscal.view' },
     ],
   },
   {
     label: 'Relatórios',
     icon: BarChart3,
     children: [
-      { to: '/relatorios', label: 'Indicadores', permission: 'reports.view' },
+      { to: '/relatorios', label: 'Indicadores e PDF', permission: 'reports.view' },
     ],
   },
   {
@@ -88,6 +88,7 @@ const groups: Group[] = [
     icon: Settings,
     children: [
       { to: '/administracao', label: 'Configurações', permission: 'settings.manage' },
+      { to: '/administracao/especialidades', label: 'Especialidades técnicas', permission: 'settings.manage' },
       { to: '/administracao/permissoes', label: 'Perfis e permissões', permission: 'permissions.manage' },
     ],
   },
