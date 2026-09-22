@@ -1,4 +1,16 @@
-import { AlertTriangle, CheckCircle2, KeyRound, MailPlus, RefreshCw, ShieldCheck, UserPlus, Users } from 'lucide-react';
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Edit3,
+  KeyRound,
+  MailPlus,
+  RefreshCw,
+  Save,
+  ShieldCheck,
+  UserPlus,
+  Users,
+  X,
+} from 'lucide-react';
 import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 
 import { PageHeader } from '../components/ui/PageHeader';
@@ -8,11 +20,36 @@ import { useSessionDraft } from '../hooks/useSessionDraft';
 import { supabase } from '../lib/supabase';
 import type { RoleCode } from '../types/domain';
 
+type AccessProfile = {
+  id: string;
+  name: string;
+  base_role_code: RoleCode;
+  active: boolean;
+};
+
 type UserRow = {
   userId: string;
   fullName: string;
   email: string;
   roleCode: RoleCode;
+  accessProfileId: string | null;
+  accessProfileName: string | null;
+  active: boolean;
+};
+
+type InviteDraft = {
+  fullName: string;
+  email: string;
+  roleCode: RoleCode;
+  accessProfileId: string;
+};
+
+type EditDraft = {
+  userId: string;
+  fullName: string;
+  email: string;
+  roleCode: RoleCode;
+  accessProfileId: string;
   active: boolean;
 };
 
@@ -28,22 +65,24 @@ const roleLabels: Record<RoleCode, string> = {
 };
 
 const selectableRoles: RoleCode[] = ['gestor','comercial','atendimento','tecnico','estoque','financeiro','fiscal','admin'];
-
-const emptyInvite = { fullName: '', email: '', roleCode: 'tecnico' as RoleCode };
+const emptyInvite: InviteDraft = { fullName: '', email: '', roleCode: 'tecnico', accessProfileId: '' };
 
 export function UsersPage() {
-  const { mode } = useAuth();
+  const { mode, user } = useAuth();
   const { companyId } = usePrimeTech();
   const [rows, setRows] = useState<UserRow[]>([]);
+  const [profiles, setProfiles] = useState<AccessProfile[]>([]);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
-  const [invite, setInvite, clearInvite] = useSessionDraft('admin-user-invite', emptyInvite);
+  const [invite, setInvite, clearInvite] = useSessionDraft<InviteDraft>('admin-user-invite', emptyInvite);
+  const [editing, setEditing] = useState<EditDraft | null>(null);
 
   const load = useCallback(async () => {
     if (mode !== 'supabase' || !supabase || !companyId) {
       setRows([]);
+      setProfiles([]);
       setLoading(false);
       return;
     }
@@ -51,37 +90,63 @@ export function UsersPage() {
     setLoading(true);
     setError('');
     try {
-      const { data: access, error: accessError } = await supabase
+      let accessData: Array<{ user_id: string; role_code: string; active: boolean; access_profile_id?: string | null }> = [];
+      const modernAccess = await supabase
         .from('user_company_access')
-        .select('user_id, role_code, active')
+        .select('user_id,role_code,active,access_profile_id')
         .eq('company_id', companyId)
         .order('role_code');
-      if (accessError) throw accessError;
 
-      const ids = [...new Set((access ?? []).map((item) => String(item.user_id)))];
+      if (!modernAccess.error) {
+        accessData = (modernAccess.data ?? []) as typeof accessData;
+      } else {
+        const legacyAccess = await supabase
+          .from('user_company_access')
+          .select('user_id,role_code,active')
+          .eq('company_id', companyId)
+          .order('role_code');
+        if (legacyAccess.error) throw legacyAccess.error;
+        accessData = (legacyAccess.data ?? []) as typeof accessData;
+      }
+
+      let loadedProfiles: AccessProfile[] = [];
+      const profilesResult = await supabase
+        .from('access_profiles')
+        .select('id,name,base_role_code,active')
+        .eq('company_id', companyId)
+        .order('name');
+      if (!profilesResult.error) loadedProfiles = (profilesResult.data ?? []) as AccessProfile[];
+      setProfiles(loadedProfiles);
+      const profileById = new Map(loadedProfiles.map((profile) => [profile.id, profile]));
+
+      const ids = [...new Set(accessData.map((item) => String(item.user_id)))];
       if (!ids.length) {
         setRows([]);
         return;
       }
 
-      let profiles: Array<{ id: string; full_name?: string | null; email?: string | null }> = [];
-      const profileResult = await supabase.from('profiles').select('id, full_name, email').in('id', ids);
-      if (profileResult.error) {
-        const fallback = await supabase.from('profiles').select('id, full_name').in('id', ids);
+      let profileData: Array<{ id: string; full_name?: string | null; email?: string | null }> = [];
+      const publicProfiles = await supabase.from('profiles').select('id,full_name,email').in('id', ids);
+      if (publicProfiles.error) {
+        const fallback = await supabase.from('profiles').select('id,full_name').in('id', ids);
         if (fallback.error) throw fallback.error;
-        profiles = (fallback.data ?? []) as Array<{ id: string; full_name?: string | null; email?: string | null }>;
+        profileData = (fallback.data ?? []) as typeof profileData;
       } else {
-        profiles = (profileResult.data ?? []) as Array<{ id: string; full_name?: string | null; email?: string | null }>;
+        profileData = (publicProfiles.data ?? []) as typeof profileData;
       }
 
-      const profileById = new Map(profiles.map((profile) => [String(profile.id), profile]));
-      setRows((access ?? []).map((item) => {
-        const profile = profileById.get(String(item.user_id));
+      const publicById = new Map(profileData.map((profile) => [String(profile.id), profile]));
+      setRows(accessData.map((item) => {
+        const publicProfile = publicById.get(String(item.user_id));
+        const accessProfileId = item.access_profile_id ? String(item.access_profile_id) : null;
+        const custom = accessProfileId ? profileById.get(accessProfileId) : undefined;
         return {
           userId: String(item.user_id),
-          fullName: String(profile?.full_name ?? 'Usuário'),
-          email: String(profile?.email ?? ''),
+          fullName: String(publicProfile?.full_name ?? 'Usuário'),
+          email: String(publicProfile?.email ?? ''),
           roleCode: String(item.role_code) as RoleCode,
+          accessProfileId,
+          accessProfileName: custom?.name ?? null,
           active: Boolean(item.active),
         };
       }));
@@ -105,10 +170,33 @@ export function UsersPage() {
     const { data, error: invokeError } = await supabase.functions.invoke('admin-users', {
       body: { ...body, companyId },
     });
-    if (invokeError) throw invokeError;
+    if (invokeError) {
+      throw new Error(
+        invokeError.message.includes('Failed to send')
+          ? 'A Edge Function admin-users ainda não está publicada no Supabase.'
+          : invokeError.message,
+      );
+    }
     const result = data as { error?: string; message?: string } | null;
     if (result?.error) throw new Error(result.error);
     return result;
+  }
+
+  function applyProfile(profileId: string, target: 'invite' | 'edit') {
+    const profile = profiles.find((item) => item.id === profileId);
+    if (target === 'invite') {
+      setInvite((current) => ({
+        ...current,
+        accessProfileId: profileId,
+        roleCode: profile?.base_role_code ?? current.roleCode,
+      }));
+      return;
+    }
+    setEditing((current) => current ? {
+      ...current,
+      accessProfileId: profileId,
+      roleCode: profile?.base_role_code ?? current.roleCode,
+    } : current);
   }
 
   async function submitInvite(event: FormEvent) {
@@ -126,13 +214,54 @@ export function UsersPage() {
         fullName: invite.fullName.trim(),
         email: invite.email.trim().toLowerCase(),
         roleCode: invite.roleCode,
+        accessProfileId: invite.accessProfileId || null,
         redirectTo,
       });
       clearInvite();
+      setInvite(emptyInvite);
       setSuccess(result?.message ?? 'Convite enviado.');
       await load();
     } catch (cause) {
       setError(cause instanceof Error ? cause.message : 'Não foi possível criar o usuário.');
+    } finally { setBusy(false); }
+  }
+
+  function openEdit(row: UserRow) {
+    setEditing({
+      userId: row.userId,
+      fullName: row.fullName,
+      email: row.email,
+      roleCode: row.roleCode,
+      accessProfileId: row.accessProfileId ?? '',
+      active: row.active,
+    });
+    setError('');
+    setSuccess('');
+  }
+
+  async function saveEdit(event: FormEvent) {
+    event.preventDefault();
+    if (!editing) return;
+    if (!editing.fullName.trim()) {
+      setError('Informe o nome do usuário.');
+      return;
+    }
+
+    setBusy(true); setError(''); setSuccess('');
+    try {
+      const result = await invoke({
+        action: 'update',
+        userId: editing.userId,
+        fullName: editing.fullName.trim(),
+        roleCode: editing.roleCode,
+        accessProfileId: editing.accessProfileId || null,
+        active: editing.active,
+      });
+      setEditing(null);
+      setSuccess(result?.message ?? 'Usuário atualizado.');
+      await load();
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível atualizar o usuário.');
     } finally { setBusy(false); }
   }
 
@@ -155,7 +284,7 @@ export function UsersPage() {
     <PageHeader
       eyebrow="Administração"
       title="Usuários e acessos"
-      description="Crie usuários, defina o perfil de trabalho e envie convite ou recuperação de senha sem compartilhar senhas."
+      description="Crie, edite, ative ou desative usuários e associe cada pessoa a um perfil de acesso."
       actions={<button type="button" className="ghost-button" onClick={() => void load()} disabled={loading}><RefreshCw size={16} /> Atualizar</button>}
     />
 
@@ -170,13 +299,31 @@ export function UsersPage() {
       <article className="metric-card"><div className="metric-icon"><UserPlus /></div><span>Técnicos</span><strong>{counts.tech}</strong><small>Perfis técnicos ativos</small></article>
     </div>
 
+    {editing && (
+      <section className="panel" style={{ marginBottom: 20 }}>
+        <div className="panel-head"><div><span className="eyebrow">Editar usuário</span><h2>{editing.fullName}</h2></div><button type="button" className="ghost-button" onClick={() => setEditing(null)}><X size={15} /> Fechar</button></div>
+        <form onSubmit={(event) => void saveEdit(event)} style={{ display: 'grid', gap: 14 }}>
+          <div className="form-grid">
+            <label><span>Nome completo</span><input value={editing.fullName} onChange={(event) => setEditing((value) => value ? { ...value, fullName: event.target.value } : value)} /></label>
+            <label><span>E-mail</span><input value={editing.email} disabled /></label>
+            <label><span>Perfil personalizado</span><select value={editing.accessProfileId} onChange={(event) => applyProfile(event.target.value, 'edit')}><option value="">Usar perfil padrão</option>{profiles.filter((profile) => profile.active).map((profile) => <option key={profile.id} value={profile.id}>{profile.name} · base {roleLabels[profile.base_role_code]}</option>)}</select></label>
+            {!editing.accessProfileId && <label><span>Perfil padrão</span><select value={editing.roleCode} onChange={(event) => setEditing((value) => value ? { ...value, roleCode: event.target.value as RoleCode } : value)}>{selectableRoles.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}</select></label>}
+            <label className="ghost-button" style={{ alignSelf: 'end', justifyContent: 'flex-start' }}><input type="checkbox" checked={editing.active} disabled={editing.userId === user?.id} onChange={(event) => setEditing((value) => value ? { ...value, active: event.target.checked } : value)} /> Acesso ativo</label>
+          </div>
+          {editing.userId === user?.id && <div className="notice" style={{ marginBottom: 0 }}><ShieldCheck size={18} /><div><strong>Seu próprio acesso está protegido</strong><p>Você pode alterar seu nome, mas não pode trocar o próprio perfil ou desativar sua conta por esta tela.</p></div></div>}
+          <div className="quick-actions"><button type="submit" className="primary-button" disabled={busy}><Save size={16} /> {busy ? 'Salvando...' : 'Salvar usuário'}</button></div>
+        </form>
+      </section>
+    )}
+
     <section className="panel" style={{ marginBottom: 20 }}>
       <div className="panel-head"><div><span className="eyebrow">Novo acesso</span><h2>Convidar usuário</h2></div><MailPlus /></div>
       <form onSubmit={(event) => void submitInvite(event)} style={{ display: 'grid', gap: 14 }}>
         <div className="form-grid">
           <label><span>Nome completo</span><input value={invite.fullName} onChange={(e) => setInvite((v) => ({ ...v, fullName: e.target.value }))} placeholder="Nome do colaborador" /></label>
           <label><span>E-mail</span><input type="email" value={invite.email} onChange={(e) => setInvite((v) => ({ ...v, email: e.target.value }))} placeholder="usuario@empresa.com.br" /></label>
-          <label><span>Perfil</span><select value={invite.roleCode} onChange={(e) => setInvite((v) => ({ ...v, roleCode: e.target.value as RoleCode }))}>{selectableRoles.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}</select></label>
+          <label><span>Perfil personalizado</span><select value={invite.accessProfileId ?? ''} onChange={(event) => applyProfile(event.target.value, 'invite')}><option value="">Usar perfil padrão</option>{profiles.filter((profile) => profile.active).map((profile) => <option key={profile.id} value={profile.id}>{profile.name} · base {roleLabels[profile.base_role_code]}</option>)}</select></label>
+          {!invite.accessProfileId && <label><span>Perfil padrão</span><select value={invite.roleCode} onChange={(e) => setInvite((v) => ({ ...v, roleCode: e.target.value as RoleCode }))}>{selectableRoles.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}</select></label>}
         </div>
         <div className="notice" style={{ marginBottom: 0 }}><ShieldCheck size={18} /><div><strong>Sem senha compartilhada</strong><p>O usuário recebe o convite por e-mail e cria a própria senha na tela segura do Cronos.</p></div></div>
         <div className="quick-actions"><button type="submit" disabled={busy}><UserPlus size={16} /> {busy ? 'Enviando...' : 'Criar usuário e enviar convite'}</button></div>
@@ -186,13 +333,14 @@ export function UsersPage() {
     <section className="panel">
       <div className="panel-head"><div><span className="eyebrow">Equipe</span><h2>Acessos cadastrados</h2></div></div>
       {loading ? <div className="empty-state"><RefreshCw size={38} /><h3>Carregando usuários</h3></div> : rows.length === 0 ? <div className="empty-state"><Users size={38} /><h3>Nenhum usuário encontrado</h3></div> : <div className="table-wrap"><table>
-        <thead><tr><th>Usuário</th><th>E-mail</th><th>Perfil</th><th>Status</th><th>Ações</th></tr></thead>
+        <thead><tr><th>Usuário</th><th>E-mail</th><th>Perfil</th><th>Tipo operacional</th><th>Status</th><th>Ações</th></tr></thead>
         <tbody>{rows.map((row) => <tr key={`${row.userId}-${row.roleCode}`}>
           <td><strong>{row.fullName}</strong></td>
           <td>{row.email || '—'}</td>
+          <td><strong>{row.accessProfileName ?? roleLabels[row.roleCode] ?? row.roleCode}</strong><small>{row.accessProfileName ? 'Personalizado' : 'Padrão'}</small></td>
           <td>{roleLabels[row.roleCode] ?? row.roleCode}</td>
           <td><span className={`stock-state ${row.active ? 'ok' : 'critical'}`}>{row.active ? 'Ativo' : 'Inativo'}</span></td>
-          <td><button type="button" className="ghost-button" disabled={busy || !row.email} onClick={() => void resetPassword(row)}><KeyRound size={15} /> Enviar redefinição</button></td>
+          <td><div className="quick-actions"><button type="button" className="ghost-button" disabled={busy} onClick={() => openEdit(row)}><Edit3 size={15} /> Editar</button><button type="button" className="ghost-button" disabled={busy || !row.email} onClick={() => void resetPassword(row)}><KeyRound size={15} /> Redefinir senha</button></div></td>
         </tr>)}</tbody>
       </table></div>}
     </section>
