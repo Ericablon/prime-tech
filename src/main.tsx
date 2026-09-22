@@ -11,6 +11,7 @@ import { PrimeTechProvider } from './contexts/PrimeTechContext';
 import './styles.css';
 import './premium.css';
 import './login-v2.css';
+import './technician-mobile.css';
 
 const routerBase = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
 
@@ -24,9 +25,7 @@ try {
   // A aplicação continua normalmente se o navegador bloquear sessionStorage.
 }
 
-ReactDOM.createRoot(
-  document.getElementById('root')!,
-).render(
+ReactDOM.createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <BrowserRouter basename={routerBase}>
       <AuthProvider>
@@ -38,16 +37,8 @@ ReactDOM.createRoot(
   </React.StrictMode>,
 );
 
-if (
-  'serviceWorker' in navigator &&
-  import.meta.env.PROD
-) {
-  window.addEventListener(
-    'load',
-    () => {
-      void navigator.serviceWorker.register(
-        `${import.meta.env.BASE_URL}sw.js`,
-      );
-    },
-  );
+if ('serviceWorker' in navigator && import.meta.env.PROD) {
+  window.addEventListener('load', () => {
+    void navigator.serviceWorker.register(`${import.meta.env.BASE_URL}sw.js`);
+  });
 }
