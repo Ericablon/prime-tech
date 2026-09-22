@@ -6,6 +6,7 @@ import { useAuth } from './contexts/AuthContext';
 import { can } from './lib/permissions';
 import type { Permission } from './types/domain';
 
+import { AccessProfilesPage } from './pages/AccessProfilesPage';
 import { AdminPage } from './pages/AdminPage';
 import { ClientsPage } from './pages/ClientsPage';
 import { CommercialPage } from './pages/CommercialPage';
@@ -74,7 +75,7 @@ export default function App() {
         <Route path="administracao" element={<PermissionGuard permission="settings.manage"><AdminPage /></PermissionGuard>} />
         <Route path="administracao/usuarios" element={<PermissionGuard permission="users.manage"><UsersPage /></PermissionGuard>} />
         <Route path="administracao/especialidades" element={<PermissionGuard permission="settings.manage"><TechnicalSpecialtiesPage /></PermissionGuard>} />
-        <Route path="administracao/permissoes" element={<PermissionGuard permission="permissions.manage"><AdminPage permissions /></PermissionGuard>} />
+        <Route path="administracao/permissoes" element={<PermissionGuard permission="permissions.manage"><AccessProfilesPage /></PermissionGuard>} />
       </Route>
 
       <Route path="*" element={<Navigate to="/" replace />} />
