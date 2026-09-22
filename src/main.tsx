@@ -14,6 +14,16 @@ import './login-v2.css';
 
 const routerBase = import.meta.env.BASE_URL.replace(/\/$/, '') || '/';
 
+try {
+  const redirectedPath = sessionStorage.getItem('cronos:pages-redirect');
+  if (redirectedPath && redirectedPath.startsWith(`${routerBase}/`)) {
+    sessionStorage.removeItem('cronos:pages-redirect');
+    window.history.replaceState(null, '', redirectedPath);
+  }
+} catch {
+  // A aplicação continua normalmente se o navegador bloquear sessionStorage.
+}
+
 ReactDOM.createRoot(
   document.getElementById('root')!,
 ).render(
