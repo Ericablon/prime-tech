@@ -2,7 +2,8 @@ import {
   AlertTriangle, ArrowDownToLine, ArrowUpFromLine, Boxes, CheckCircle2, ClipboardCheck, Edit3,
   PackageCheck, PackageMinus, PackagePlus, RefreshCw, Save, Search, SlidersHorizontal, X,
 } from 'lucide-react';
-import { type FormEvent, useMemo, useState } from 'react';
+import { type FormEvent, useEffect, useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 
 import { MetricCard } from '../components/ui/MetricCard';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -24,14 +25,17 @@ type EditForm={id:string;sku:string;name:string;minimum:string;cost:string;sale:
 export function StockPage(){
   const {user,mode}=useAuth();
   const {stock,orders,loading,error,addStockItem,refresh}=usePrimeTech();
+  const [searchParams]=useSearchParams();
   const [showForm,setShowForm,clearShowForm]=useSessionDraft('stock-form-open',false);
   const [form,setForm,clearForm]=useSessionDraft('stock-new-item',emptyForm);
   const [selectedItemId,setSelectedItemId,clearSelected]=useSessionDraft<string|null>('stock-movement-item',null);
   const [movementType,setMovementType]=useSessionDraft<MovementType>('stock-movement-type','reserve');
   const [movementForm,setMovementForm,clearMovement]=useSessionDraft('stock-movement-form',emptyMovement);
   const [editForm,setEditForm]=useState<EditForm|null>(null);
-  const [saving,setSaving]=useState(false); const [localError,setLocalError]=useState(''); const [search,setSearch]=useState('');
+  const [saving,setSaving]=useState(false); const [localError,setLocalError]=useState(''); const [search,setSearch]=useState(()=>searchParams.get('busca')??'');
   const selectedItem=stock.find((item)=>item.id===selectedItemId)??null;
+
+  useEffect(()=>{setSearch(searchParams.get('busca')??'');},[searchParams]);
 
   const totals=useMemo(()=>stock.reduce((acc,item)=>{const physical=Number(item.physical??item.quantity??0);const reserved=Number(item.reserved??item.reserved_quantity??0);const minimum=Number(item.minimum??item.minimum_quantity??0);acc.physical+=physical;acc.reserved+=reserved;acc.available+=Math.max(physical-reserved,0);acc.value+=physical*Number(item.cost_price??0);if(physical-reserved<=minimum)acc.critical+=1;return acc;},{physical:0,reserved:0,available:0,critical:0,value:0}),[stock]);
   const visibleStock=useMemo(()=>{const value=search.trim().toLowerCase();if(!value)return stock;return stock.filter((item)=>item.name.toLowerCase().includes(value)||item.sku.toLowerCase().includes(value));},[search,stock]);
