@@ -77,6 +77,18 @@ export function FinancialHubPage(){
     }
   },[accounts,entryForm.accountId,planForm.accountId,setEntryForm,setPlanForm]);
 
+  useEffect(()=>{
+    if(!categories.length)return;
+    if(!entryForm.categoryId){
+      const match=categories.find((item)=>item.active&&(item.direction===entryForm.type||item.direction==='both')&&item.name.toLowerCase()===entryForm.category.toLowerCase());
+      if(match)setEntryForm((v)=>({...v,categoryId:match.id,category:match.name}));
+    }
+    if(!planForm.categoryId){
+      const match=categories.find((item)=>item.active&&(item.direction===planForm.type||item.direction==='both')&&item.name.toLowerCase()===planForm.category.toLowerCase());
+      if(match)setPlanForm((v)=>({...v,categoryId:match.id,category:match.name}));
+    }
+  },[categories,entryForm.category,entryForm.categoryId,entryForm.type,planForm.category,planForm.categoryId,planForm.type,setEntryForm,setPlanForm]);
+
   const monthEntries=useMemo(()=>finance.filter((entry)=>isCurrentMonth(entry.occurred_at)),[finance]);
   const revenues=monthEntries.filter((e)=>e.type==='income').reduce((s,e)=>s+Number(e.amount),0);
   const expenses=monthEntries.filter((e)=>e.type==='expense').reduce((s,e)=>s+Number(e.amount),0);
@@ -119,7 +131,6 @@ export function FinancialHubPage(){
       if(insertError)throw insertError;
       const created=data as CategoryRow;
       setCategories((current)=>[...current,created].sort((a,b)=>a.sort_order-b.sort_order||a.name.localeCompare(b.name)));
-      selectCategory(target==='entry-category'?'entry':'plan',created.id);
       if(target==='entry-category')setEntryForm((v)=>({...v,categoryId:created.id,category:created.name})); else setPlanForm((v)=>({...v,categoryId:created.id,category:created.name}));
       setNewCategory({name:'',dreGroup:type==='income'?'gross_revenue':'operating_expense'});
       setQuickTarget(null);
@@ -154,7 +165,7 @@ export function FinancialHubPage(){
 
   const canManage=can(user,'finance.manage');
   const renderCategory=(target:'entry'|'plan')=>{
-    const form=target==='entry'?entryForm:planForm;const options=categoryOptions(form.type);const selectValue=form.categoryId||(options.some((item)=>item.name===form.category)?form.category:'');
+    const form=target==='entry'?entryForm:planForm;const options=categoryOptions(form.type);const selectValue=form.categoryId||(options.some((item)=>!item.id&&item.name===form.category)?form.category:'');
     return <div className="select-with-action"><select value={selectValue} onChange={(e)=>selectCategory(target,e.target.value)}>{options.map((c)=><option key={c.id||c.code} value={c.id||c.name}>{c.name}</option>)}</select>{canManage&&<button type="button" className="select-add-button" title="Criar categoria financeira sem sair desta tela" onClick={()=>{setNewCategory({name:'',dreGroup:form.type==='income'?'gross_revenue':'operating_expense'});setQuickTarget(`${target}-category` as QuickTarget);}}><Plus size={17}/></button>}</div>;
   };
   const renderAccount=(target:'entry'|'plan')=>{const value=target==='entry'?entryForm.accountId:planForm.accountId;return <div className="select-with-action"><select value={value} onChange={(e)=>target==='entry'?setEntryForm((v)=>({...v,accountId:e.target.value})):setPlanForm((v)=>({...v,accountId:e.target.value}))}><option value="">Sem conta definida</option>{accounts.map((a)=><option key={a.id} value={a.id}>{a.name}</option>)}</select>{canManage&&<button type="button" className="select-add-button" title="Criar conta financeira sem sair desta tela" onClick={()=>{setNewAccount({name:'',accountType:'cash'});setQuickTarget(`${target}-account` as QuickTarget);}}><Plus size={17}/></button>}</div>};
