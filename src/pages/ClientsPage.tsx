@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react';
 import { PageHeader } from '../components/ui/PageHeader';
 import { useAuth } from '../contexts/AuthContext';
 import { usePrimeTech } from '../contexts/PrimeTechContext';
+import { useSessionDraft } from '../hooks/useSessionDraft';
 import { can } from '../lib/permissions';
 import { supabase } from '../lib/supabase';
 import type { Client, CreateClientInput } from '../types/domain';
@@ -64,10 +65,10 @@ export function ClientsPage() {
   const { clients, equipment, orders, loading, error: contextError, createClient, refresh } = usePrimeTech();
 
   const [search, setSearch] = useState('');
-  const [open, setOpen] = useState(false);
+  const [open, setOpen, clearOpenDraft] = useSessionDraft('client-form-open', false);
   const [busy, setBusy] = useState(false);
   const [formError, setFormError] = useState('');
-  const [form, setForm] = useState<ClientForm>(emptyForm);
+  const [form, setForm, clearFormDraft] = useSessionDraft<ClientForm>('client-form', emptyForm);
 
   const filteredClients = useMemo(() => {
     const term = search.trim().toLowerCase();
@@ -77,13 +78,13 @@ export function ClientsPage() {
   }, [clients, search]);
 
   const close = () => {
-    setOpen(false);
+    clearOpenDraft();
+    clearFormDraft();
     setFormError('');
-    setForm(emptyForm);
   };
 
   const openNew = () => {
-    setForm(emptyForm);
+    clearFormDraft();
     setFormError('');
     setOpen(true);
   };
@@ -152,6 +153,10 @@ export function ClientsPage() {
           <div className="panel-head">
             <div><span className="eyebrow">Cadastro</span><h2>{form.id ? 'Editar cliente' : 'Novo cliente'}</h2></div>
             <button type="button" className="ghost-button small" onClick={close}><X size={16} /> Fechar</button>
+          </div>
+
+          <div className="notice" style={{ marginBottom: 14 }}>
+            <div><strong>Rascunho automático</strong><p>Você pode trocar de módulo para consultar um CNPJ ou outra informação e voltar: os dados permanecem nesta sessão até salvar ou cancelar.</p></div>
           </div>
 
           <form onSubmit={(event) => void handleSubmit(event)} style={{ display: 'grid', gap: 16 }}>
