@@ -29,32 +29,19 @@ import { StockPage } from './pages/StockPage';
 import { TechnicalCleaningPage } from './pages/TechnicalCleaningPage';
 import { TechnicalSpecialtiesPage } from './pages/TechnicalSpecialtiesPage';
 import { TechnicianPage } from './pages/TechnicianPage';
+import { UsersPage } from './pages/UsersPage';
 
 function ProtectedLayout() {
   const { user, loading } = useAuth();
-
   if (loading) return <div className="loading">Carregando...</div>;
   if (!user) return <Navigate to="/login" replace />;
-
-  return (
-    <AppShell>
-      <Outlet />
-    </AppShell>
-  );
+  return <AppShell><Outlet /></AppShell>;
 }
 
-function PermissionGuard({
-  permission,
-  children,
-}: {
-  permission: Permission;
-  children: ReactNode;
-}) {
+function PermissionGuard({ permission, children }: { permission: Permission; children: ReactNode }) {
   const { user } = useAuth();
-
   if (!user) return <Navigate to="/login" replace />;
   if (!can(user, permission)) return <Navigate to="/" replace />;
-
   return <>{children}</>;
 }
 
@@ -85,6 +72,7 @@ export default function App() {
         <Route path="fiscal/configuracao" element={<PermissionGuard permission="fiscal.settings"><FiscalSettingsPage /></PermissionGuard>} />
         <Route path="relatorios" element={<PermissionGuard permission="reports.view"><ReportsPage /></PermissionGuard>} />
         <Route path="administracao" element={<PermissionGuard permission="settings.manage"><AdminPage /></PermissionGuard>} />
+        <Route path="administracao/usuarios" element={<PermissionGuard permission="users.manage"><UsersPage /></PermissionGuard>} />
         <Route path="administracao/especialidades" element={<PermissionGuard permission="settings.manage"><TechnicalSpecialtiesPage /></PermissionGuard>} />
         <Route path="administracao/permissoes" element={<PermissionGuard permission="permissions.manage"><AdminPage permissions /></PermissionGuard>} />
       </Route>
