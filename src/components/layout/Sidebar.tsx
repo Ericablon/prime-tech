@@ -59,6 +59,7 @@ const groups: Group[] = [
     icon: Boxes,
     children: [
       { to: '/estoque', label: 'Peças e materiais', permission: 'stock.view' },
+      { to: '/estoque/movimentacoes', label: 'Movimentações', permission: 'stock.view' },
     ],
   },
   {
