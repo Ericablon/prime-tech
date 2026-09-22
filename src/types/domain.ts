@@ -284,6 +284,8 @@ export interface PaymentPlanInput {
   order_id: string | null;
   type: 'income' | 'expense';
   category: string;
+  category_id?: string | null;
+  account_id?: string | null;
   description: string;
   amount: number;
   count: number;
