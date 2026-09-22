@@ -22,6 +22,7 @@ import { ReportsPage } from './pages/ReportsPage';
 import { SchedulePage } from './pages/SchedulePage';
 import { StockPage } from './pages/StockPage';
 import { TechnicalCleaningPage } from './pages/TechnicalCleaningPage';
+import { TechnicalSpecialtiesPage } from './pages/TechnicalSpecialtiesPage';
 import { TechnicianPage } from './pages/TechnicianPage';
 
 function Guard({
@@ -60,6 +61,7 @@ export default function App() {
       <Route path="/fiscal" element={<Guard permission="fiscal.view"><FiscalPage /></Guard>} />
       <Route path="/relatorios" element={<Guard permission="reports.view"><ReportsPage /></Guard>} />
       <Route path="/administracao" element={<Guard permission="settings.manage"><AdminPage /></Guard>} />
+      <Route path="/administracao/especialidades" element={<Guard permission="settings.manage"><TechnicalSpecialtiesPage /></Guard>} />
       <Route path="/administracao/permissoes" element={<Guard permission="permissions.manage"><AdminPage permissions /></Guard>} />
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
