@@ -1,6 +1,6 @@
 -- Cronos / Prime Tech — expansão operacional inspirada nos padrões maduros do Itamix Operations Hub
--- Aplicar APÓS 0006_cronos_prototype_integrity_fix.sql
--- Mantém compatibilidade com o protótipo atual e prepara especialidades, financeiro, DRE, estoque e programação.
+-- Aplicar APÓS 0006_cronos_prototype_integrity_fix.sql.
+-- Especialidades técnicas, categorias/contas financeiras, DRE, estoque transacional e programação.
 
 begin;
 
@@ -23,12 +23,12 @@ create table if not exists public.technical_specialties (
   unique (company_id, code)
 );
 
-insert into public.technical_specialties (company_id, code, name, description, sort_order)
+insert into public.technical_specialties(company_id, code, name, description, sort_order)
 select c.id, x.code, x.name, x.description, x.sort_order
 from public.companies c
 cross join (values
-  ('impressoras', 'Impressoras', 'Assistência técnica de impressoras, multifuncionais e equipamentos de impressão.', 10),
-  ('computadores', 'Computadores', 'Assistência técnica de desktops, notebooks e equipamentos de informática.', 20)
+  ('impressoras', 'Impressoras', 'Impressoras, multifuncionais, scanners, plotters e equipamentos de impressão.', 10),
+  ('computadores', 'Computadores', 'Desktops, notebooks, workstations, servidores e equipamentos de informática.', 20)
 ) as x(code, name, description, sort_order)
 on conflict (company_id, code) do nothing;
 
@@ -80,16 +80,14 @@ begin
     new.technical_specialty_code := public.infer_technical_specialty(new.category);
   end if;
 
-  if new.company_id is not null and new.technical_specialty_code is not null then
-    if not exists (
-      select 1
-      from public.technical_specialties s
-      where s.company_id = new.company_id
-        and s.code = new.technical_specialty_code
-        and s.active = true
-    ) then
-      raise exception 'Especialidade técnica inválida para esta empresa: %', new.technical_specialty_code;
-    end if;
+  if new.company_id is not null and new.technical_specialty_code is not null and not exists (
+    select 1
+    from public.technical_specialties s
+    where s.company_id = new.company_id
+      and s.code = new.technical_specialty_code
+      and s.active = true
+  ) then
+    raise exception 'Especialidade técnica inválida para esta empresa: %', new.technical_specialty_code;
   end if;
 
   return new;
@@ -98,7 +96,8 @@ $$;
 
 drop trigger if exists validate_equipment_specialty on public.equipment;
 create trigger validate_equipment_specialty
-before insert or update of category, company_id, technical_specialty_code on public.equipment
+before insert or update of category, company_id, technical_specialty_code
+on public.equipment
 for each row execute function public.validate_equipment_specialty();
 
 update public.equipment e
@@ -113,31 +112,26 @@ security invoker
 set search_path = public
 as $$
 declare
-  v_equipment_specialty text;
   v_has_mapping boolean;
 begin
   if new.technical_specialty_code is null or btrim(new.technical_specialty_code) = '' then
-    select e.technical_specialty_code
-      into v_equipment_specialty
-      from public.equipment e
-     where e.id = new.equipment_id;
-
-    new.technical_specialty_code := coalesce(
-      v_equipment_specialty,
-      (select public.infer_technical_specialty(e.category) from public.equipment e where e.id = new.equipment_id)
-    );
+    select coalesce(
+      e.technical_specialty_code,
+      public.infer_technical_specialty(e.category)
+    )
+    into new.technical_specialty_code
+    from public.equipment e
+    where e.id = new.equipment_id;
   end if;
 
-  if new.company_id is not null and new.technical_specialty_code is not null then
-    if not exists (
-      select 1
-      from public.technical_specialties s
-      where s.company_id = new.company_id
-        and s.code = new.technical_specialty_code
-        and s.active = true
-    ) then
-      raise exception 'Especialidade técnica inválida para esta empresa: %', new.technical_specialty_code;
-    end if;
+  if new.company_id is not null and new.technical_specialty_code is not null and not exists (
+    select 1
+    from public.technical_specialties s
+    where s.company_id = new.company_id
+      and s.code = new.technical_specialty_code
+      and s.active = true
+  ) then
+    raise exception 'Especialidade técnica inválida para esta empresa: %', new.technical_specialty_code;
   end if;
 
   if new.assigned_technician_id is not null
@@ -152,8 +146,8 @@ begin
         and pts.active = true
     ) into v_has_mapping;
 
-    -- Compatibilidade: enquanto um técnico não tiver nenhuma especialidade cadastrada,
-    -- ele continua atribuível. Assim que existir configuração, a compatibilidade vira obrigatória.
+    -- Compatibilidade: técnicos sem configuração explícita continuam atribuíveis.
+    -- Após configurar especialidades para o técnico, a correspondência passa a ser obrigatória.
     if v_has_mapping and not exists (
       select 1
       from public.profile_technical_specialties pts
@@ -179,11 +173,13 @@ on public.service_orders
 for each row execute function public.validate_order_specialty_and_technician();
 
 update public.service_orders so
-set technical_specialty_code = e.technical_specialty_code
+set technical_specialty_code = coalesce(
+  e.technical_specialty_code,
+  public.infer_technical_specialty(e.category)
+)
 from public.equipment e
 where e.id = so.equipment_id
-  and so.technical_specialty_code is null
-  and e.technical_specialty_code is not null;
+  and so.technical_specialty_code is null;
 
 create index if not exists idx_service_orders_specialty_status
   on public.service_orders(company_id, technical_specialty_code, status);
@@ -222,7 +218,7 @@ with check (
 );
 
 -- ============================================================================
--- 2) CONTAS E CATEGORIAS FINANCEIRAS
+-- 2) CONTAS E CATEGORIAS FINANCEIRAS / DRE
 -- ============================================================================
 
 create table if not exists public.financial_accounts (
@@ -250,13 +246,8 @@ create table if not exists public.financial_categories (
   name text not null,
   direction text not null check (direction in ('income','expense','both')),
   dre_group text not null check (dre_group in (
-    'gross_revenue',
-    'deduction',
-    'cost_of_sales',
-    'operating_expense',
-    'financial_expense',
-    'other_income',
-    'other_expense'
+    'gross_revenue','deduction','cost_of_sales','operating_expense',
+    'financial_expense','other_income','other_expense'
   )),
   sort_order integer not null default 0,
   active boolean not null default true,
@@ -303,27 +294,31 @@ alter table public.payment_installments
   add column if not exists account_id uuid references public.financial_accounts(id) on delete set null,
   add column if not exists competence_date date;
 
+-- Backfill da primeira conta ativa por empresa. Correlated subquery evita referência
+-- inválida ao alias da tabela-alvo em FROM LATERAL durante UPDATE.
 update public.financial_entries f
-set account_id = a.id
-from lateral (
+set account_id = (
   select fa.id
   from public.financial_accounts fa
-  where fa.company_id = f.company_id and fa.active
+  where fa.company_id = f.company_id
+    and fa.active = true
   order by fa.created_at, fa.id
   limit 1
-) a
-where f.account_id is null and f.company_id is not null;
+)
+where f.account_id is null
+  and f.company_id is not null;
 
 update public.payment_installments p
-set account_id = a.id
-from lateral (
+set account_id = (
   select fa.id
   from public.financial_accounts fa
-  where fa.company_id = p.company_id and fa.active
+  where fa.company_id = p.company_id
+    and fa.active = true
   order by fa.created_at, fa.id
   limit 1
-) a
-where p.account_id is null and p.company_id is not null;
+)
+where p.account_id is null
+  and p.company_id is not null;
 
 update public.financial_entries f
 set category_id = c.id
@@ -369,11 +364,11 @@ begin
   end if;
 
   select c.name, c.direction
-    into v_name, v_direction
-    from public.financial_categories c
-   where c.id = new.category_id
-     and c.company_id = new.company_id
-     and c.active = true;
+  into v_name, v_direction
+  from public.financial_categories c
+  where c.id = new.category_id
+    and c.company_id = new.company_id
+    and c.active = true;
 
   if v_name is null then
     raise exception 'Categoria financeira inválida para esta empresa';
@@ -390,12 +385,14 @@ $$;
 
 drop trigger if exists sync_financial_entry_category on public.financial_entries;
 create trigger sync_financial_entry_category
-before insert or update of category_id, company_id, type on public.financial_entries
+before insert or update of category_id, company_id, type
+on public.financial_entries
 for each row execute function public.sync_financial_category_name();
 
 drop trigger if exists sync_payment_installment_category on public.payment_installments;
 create trigger sync_payment_installment_category
-before insert or update of category_id, company_id, type on public.payment_installments
+before insert or update of category_id, company_id, type
+on public.payment_installments
 for each row execute function public.sync_financial_category_name();
 
 alter table public.financial_accounts enable row level security;
@@ -445,7 +442,6 @@ begin
     select
       f.type,
       f.amount,
-      f.category,
       coalesce(c.name, f.category) as category_name,
       coalesce(
         c.dre_group,
@@ -454,28 +450,23 @@ begin
     from public.financial_entries f
     left join public.financial_categories c on c.id = f.category_id
     where f.company_id = p_company
-      and coalesce(f.competence_date, f.occurred_at::date) >= p_start
-      and coalesce(f.competence_date, f.occurred_at::date) <= p_end
+      and coalesce(f.competence_date, f.occurred_at::date) between p_start and p_end
   ), by_category as (
-    select
-      type,
-      category_name,
-      dre_group,
-      sum(amount)::numeric(14,2) as amount
+    select type, category_name, dre_group, sum(amount)::numeric(14,2) as amount
     from base
     group by type, category_name, dre_group
   )
   select jsonb_build_object(
-    'gross_revenue', coalesce((select sum(amount) from base where type = 'income' and dre_group = 'gross_revenue'), 0),
-    'deductions', coalesce((select sum(amount) from base where type = 'expense' and dre_group = 'deduction'), 0),
-    'cost_of_sales', coalesce((select sum(amount) from base where type = 'expense' and dre_group = 'cost_of_sales'), 0),
-    'operating_expenses', coalesce((select sum(amount) from base where type = 'expense' and dre_group = 'operating_expense'), 0),
-    'financial_expenses', coalesce((select sum(amount) from base where type = 'expense' and dre_group = 'financial_expense'), 0),
-    'other_income', coalesce((select sum(amount) from base where type = 'income' and dre_group = 'other_income'), 0),
-    'other_expenses', coalesce((select sum(amount) from base where type = 'expense' and dre_group = 'other_expense'), 0),
-    'income_total', coalesce((select sum(amount) from base where type = 'income'), 0),
-    'expense_total', coalesce((select sum(amount) from base where type = 'expense'), 0),
-    'result', coalesce((select sum(case when type = 'income' then amount else -amount end) from base), 0),
+    'gross_revenue', coalesce((select sum(amount) from base where type='income' and dre_group='gross_revenue'),0),
+    'deductions', coalesce((select sum(amount) from base where type='expense' and dre_group='deduction'),0),
+    'cost_of_sales', coalesce((select sum(amount) from base where type='expense' and dre_group='cost_of_sales'),0),
+    'operating_expenses', coalesce((select sum(amount) from base where type='expense' and dre_group='operating_expense'),0),
+    'financial_expenses', coalesce((select sum(amount) from base where type='expense' and dre_group='financial_expense'),0),
+    'other_income', coalesce((select sum(amount) from base where type='income' and dre_group='other_income'),0),
+    'other_expenses', coalesce((select sum(amount) from base where type='expense' and dre_group='other_expense'),0),
+    'income_total', coalesce((select sum(amount) from base where type='income'),0),
+    'expense_total', coalesce((select sum(amount) from base where type='expense'),0),
+    'result', coalesce((select sum(case when type='income' then amount else -amount end) from base),0),
     'by_category', coalesce((
       select jsonb_agg(
         jsonb_build_object(
@@ -497,12 +488,11 @@ revoke all on function public.financial_dre_summary(uuid,date,date) from public,
 grant execute on function public.financial_dre_summary(uuid,date,date) to authenticated;
 
 -- ============================================================================
--- 3) ESTOQUE: LEDGER DE RESERVA / CONSUMO / AJUSTE
+-- 3) ESTOQUE TRANSACIONAL: RESERVA / LIBERAÇÃO / CONSUMO / AJUSTE
 -- ============================================================================
 
 alter table public.stock_movements
   drop constraint if exists stock_movements_movement_type_check;
-
 alter table public.stock_movements
   add constraint stock_movements_movement_type_check
   check (movement_type in ('in','out','adjustment','reserve','release','consume'));
@@ -535,7 +525,7 @@ begin
     raise exception 'Quantidade de reserva deve ser maior que zero';
   end if;
 
-  select * into v_item from public.stock_items where id = p_stock_item_id for update;
+  select * into v_item from public.stock_items where id=p_stock_item_id for update;
   if not found then raise exception 'Item de estoque não encontrado'; end if;
 
   if not private.has_company_permission(v_item.company_id, 'stock.reserve') then
@@ -544,20 +534,20 @@ begin
 
   if p_idempotency_key is not null and exists (
     select 1 from public.stock_movements
-    where company_id = v_item.company_id and idempotency_key = p_idempotency_key
+    where company_id=v_item.company_id and idempotency_key=p_idempotency_key
   ) then
     return v_item;
   end if;
 
-  if coalesce(v_item.quantity, 0) - coalesce(v_item.reserved_quantity, 0) < p_quantity then
+  if coalesce(v_item.quantity,0)-coalesce(v_item.reserved_quantity,0) < p_quantity then
     raise exception 'Estoque disponível insuficiente para esta reserva';
   end if;
 
   update public.stock_items
-     set reserved_quantity = coalesce(reserved_quantity, 0) + p_quantity,
-         updated_at = now()
-   where id = p_stock_item_id
-   returning * into v_item;
+  set reserved_quantity=coalesce(reserved_quantity,0)+p_quantity,
+      updated_at=now()
+  where id=p_stock_item_id
+  returning * into v_item;
 
   insert into public.stock_movements(
     stock_item_id, service_order_id, movement_type, quantity, unit_cost,
@@ -590,7 +580,7 @@ begin
     raise exception 'Quantidade deve ser maior que zero';
   end if;
 
-  select * into v_item from public.stock_items where id = p_stock_item_id for update;
+  select * into v_item from public.stock_items where id=p_stock_item_id for update;
   if not found then raise exception 'Item de estoque não encontrado'; end if;
 
   if not (
@@ -602,20 +592,20 @@ begin
 
   if p_idempotency_key is not null and exists (
     select 1 from public.stock_movements
-    where company_id = v_item.company_id and idempotency_key = p_idempotency_key
+    where company_id=v_item.company_id and idempotency_key=p_idempotency_key
   ) then
     return v_item;
   end if;
 
-  if coalesce(v_item.reserved_quantity, 0) < p_quantity then
+  if coalesce(v_item.reserved_quantity,0) < p_quantity then
     raise exception 'A quantidade informada é maior que a reserva atual';
   end if;
 
   update public.stock_items
-     set reserved_quantity = greatest(coalesce(reserved_quantity, 0) - p_quantity, 0),
-         updated_at = now()
-   where id = p_stock_item_id
-   returning * into v_item;
+  set reserved_quantity=greatest(coalesce(reserved_quantity,0)-p_quantity,0),
+      updated_at=now()
+  where id=p_stock_item_id
+  returning * into v_item;
 
   insert into public.stock_movements(
     stock_item_id, service_order_id, movement_type, quantity, unit_cost,
@@ -649,7 +639,7 @@ begin
     raise exception 'Quantidade de consumo deve ser maior que zero';
   end if;
 
-  select * into v_item from public.stock_items where id = p_stock_item_id for update;
+  select * into v_item from public.stock_items where id=p_stock_item_id for update;
   if not found then raise exception 'Item de estoque não encontrado'; end if;
 
   if not private.has_company_permission(v_item.company_id, 'stock.consume') then
@@ -658,23 +648,23 @@ begin
 
   if p_idempotency_key is not null and exists (
     select 1 from public.stock_movements
-    where company_id = v_item.company_id and idempotency_key = p_idempotency_key
+    where company_id=v_item.company_id and idempotency_key=p_idempotency_key
   ) then
     return v_item;
   end if;
 
-  if coalesce(v_item.quantity, 0) < p_quantity then
+  if coalesce(v_item.quantity,0) < p_quantity then
     raise exception 'Estoque físico insuficiente para este consumo';
   end if;
 
-  v_reserved_to_release := least(coalesce(v_item.reserved_quantity, 0), p_quantity);
+  v_reserved_to_release := least(coalesce(v_item.reserved_quantity,0), p_quantity);
 
   update public.stock_items
-     set quantity = coalesce(quantity, 0) - p_quantity,
-         reserved_quantity = greatest(coalesce(reserved_quantity, 0) - v_reserved_to_release, 0),
-         updated_at = now()
-   where id = p_stock_item_id
-   returning * into v_item;
+  set quantity=coalesce(quantity,0)-p_quantity,
+      reserved_quantity=greatest(coalesce(reserved_quantity,0)-v_reserved_to_release,0),
+      updated_at=now()
+  where id=p_stock_item_id
+  returning * into v_item;
 
   insert into public.stock_movements(
     stock_item_id, service_order_id, movement_type, quantity, unit_cost,
@@ -703,11 +693,11 @@ declare
   v_item public.stock_items;
   v_new_quantity numeric;
 begin
-  if p_delta is null or p_delta = 0 then
+  if p_delta is null or p_delta=0 then
     raise exception 'O ajuste deve ser diferente de zero';
   end if;
 
-  select * into v_item from public.stock_items where id = p_stock_item_id for update;
+  select * into v_item from public.stock_items where id=p_stock_item_id for update;
   if not found then raise exception 'Item de estoque não encontrado'; end if;
 
   if not private.has_company_permission(v_item.company_id, 'stock.adjust') then
@@ -716,31 +706,31 @@ begin
 
   if p_idempotency_key is not null and exists (
     select 1 from public.stock_movements
-    where company_id = v_item.company_id and idempotency_key = p_idempotency_key
+    where company_id=v_item.company_id and idempotency_key=p_idempotency_key
   ) then
     return v_item;
   end if;
 
-  v_new_quantity := coalesce(v_item.quantity, 0) + p_delta;
+  v_new_quantity := coalesce(v_item.quantity,0)+p_delta;
   if v_new_quantity < 0 then
     raise exception 'O ajuste deixaria o estoque físico negativo';
   end if;
-  if v_new_quantity < coalesce(v_item.reserved_quantity, 0) then
+  if v_new_quantity < coalesce(v_item.reserved_quantity,0) then
     raise exception 'O ajuste deixaria o estoque físico abaixo da quantidade reservada';
   end if;
 
   update public.stock_items
-     set quantity = v_new_quantity,
-         updated_at = now()
-   where id = p_stock_item_id
-   returning * into v_item;
+  set quantity=v_new_quantity,
+      updated_at=now()
+  where id=p_stock_item_id
+  returning * into v_item;
 
   insert into public.stock_movements(
     stock_item_id, movement_type, quantity, unit_cost,
     notes, created_by, company_id, idempotency_key
   ) values (
     p_stock_item_id, 'adjustment', abs(p_delta), v_item.cost_price,
-    concat(coalesce(p_notes, 'Ajuste de estoque'), ' | delta=', p_delta),
+    concat(coalesce(p_notes,'Ajuste de estoque'),' | delta=',p_delta),
     auth.uid(), v_item.company_id, p_idempotency_key
   );
 
@@ -759,7 +749,7 @@ grant execute on function public.consume_stock(uuid,numeric,uuid,text,text) to a
 grant execute on function public.adjust_stock(uuid,numeric,text,text) to authenticated;
 
 -- ============================================================================
--- 4) TRIGGERS DE UPDATED_AT
+-- 4) UPDATED_AT / GRANTS
 -- ============================================================================
 
 drop trigger if exists set_technical_specialties_updated_at on public.technical_specialties;
@@ -777,7 +767,6 @@ create trigger set_financial_categories_updated_at
 before update on public.financial_categories
 for each row execute function public.set_updated_at();
 
--- Grants de tabela; RLS continua sendo o gate efetivo.
 grant select, insert, update, delete on public.technical_specialties to authenticated;
 grant select, insert, update, delete on public.profile_technical_specialties to authenticated;
 grant select, insert, update, delete on public.financial_accounts to authenticated;
