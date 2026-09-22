@@ -71,7 +71,13 @@ export function SchedulePage() {
   const canSchedule = can(user, 'orders.commercial') || can(user, 'orders.tech');
 
   useEffect(() => {
-    if (mode !== 'supabase' || !supabase || !companyId) {
+    if (mode !== 'supabase' || !companyId) {
+      setTechnicians([]);
+      return;
+    }
+
+    const client = supabase;
+    if (!client) {
       setTechnicians([]);
       return;
     }
@@ -80,7 +86,7 @@ export function SchedulePage() {
 
     const loadTechnicians = async () => {
       try {
-        const { data: accessData, error: accessError } = await supabase
+        const { data: accessData, error: accessError } = await client
           .from('user_company_access')
           .select('user_id, role_code')
           .eq('company_id', companyId)
@@ -96,7 +102,7 @@ export function SchedulePage() {
           return;
         }
 
-        const { data: profileData, error: profileError } = await supabase
+        const { data: profileData, error: profileError } = await client
           .from('profiles')
           .select('id, full_name')
           .in('id', techIds)
@@ -107,12 +113,12 @@ export function SchedulePage() {
 
         try {
           const [{ data: specialtyData, error: specialtyError }, { data: mappingData, error: mappingError }] = await Promise.all([
-            supabase
+            client
               .from('technical_specialties')
               .select('id, code')
               .eq('company_id', companyId)
               .eq('active', true),
-            supabase
+            client
               .from('profile_technical_specialties')
               .select('user_id, technical_specialty_id')
               .eq('company_id', companyId)
@@ -250,7 +256,8 @@ export function SchedulePage() {
       }
     }
 
-    if (mode !== 'supabase' || !supabase) {
+    const client = supabase;
+    if (mode !== 'supabase' || !client) {
       setLocalError('A alteração da agenda está disponível no ambiente conectado ao Supabase.');
       return;
     }
@@ -260,7 +267,7 @@ export function SchedulePage() {
 
     try {
       const scheduledAt = new Date(`${date}T${time}:00`).toISOString();
-      const { error: updateError } = await supabase
+      const { error: updateError } = await client
         .from('service_orders')
         .update({
           scheduled_at: scheduledAt,
