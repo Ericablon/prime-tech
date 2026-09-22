@@ -8,7 +8,7 @@ import {
 } from 'lucide-react';
 
 import { useState } from 'react';
-import { Navigate } from 'react-router-dom';
+import { Link, Navigate } from 'react-router-dom';
 
 import { useAuth } from '../contexts/AuthContext';
 import { brandLogo } from '../lib/brand';
@@ -153,6 +153,12 @@ export function LoginPage() {
                 </button>
               </div>
             </label>
+
+            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
+              <Link to="/recuperar-senha" style={{ color: 'var(--blue2)', fontSize: 12, fontWeight: 700 }}>
+                Esqueci minha senha
+              </Link>
+            </div>
 
             {error && <p className="form-error login-v2-error">{error}</p>}
 
