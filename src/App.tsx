@@ -10,6 +10,7 @@ import { AdminPage } from './pages/AdminPage';
 import { ClientsPage } from './pages/ClientsPage';
 import { CommercialPage } from './pages/CommercialPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { DrePage } from './pages/DrePage';
 import { EquipmentPage } from './pages/EquipmentPage';
 import { FinancePage } from './pages/FinancePage';
 import { FiscalPage } from './pages/FiscalPage';
@@ -55,7 +56,7 @@ export default function App() {
       <Route path="/comercial" element={<Guard permission="orders.commercial"><CommercialPage /></Guard>} />
       <Route path="/estoque" element={<Guard permission="stock.view"><StockPage /></Guard>} />
       <Route path="/financeiro" element={<Guard permission="finance.view"><FinancePage /></Guard>} />
-      <Route path="/financeiro/dre" element={<Guard permission="finance.dre"><FinancePage dre /></Guard>} />
+      <Route path="/financeiro/dre" element={<Guard permission="finance.dre"><DrePage /></Guard>} />
       <Route path="/fiscal" element={<Guard permission="fiscal.view"><FiscalPage /></Guard>} />
       <Route path="/relatorios" element={<Guard permission="reports.view"><ReportsPage /></Guard>} />
       <Route path="/administracao" element={<Guard permission="settings.manage"><AdminPage /></Guard>} />
