@@ -4,8 +4,10 @@ import {
   CalendarDays,
   CheckCircle2,
   Clock3,
+  Printer,
   Save,
   Wrench,
+  CircuitBoard,
 } from 'lucide-react';
 import { useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
@@ -16,6 +18,10 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePrimeTech } from '../contexts/PrimeTechContext';
 import { dateTime, orderCode } from '../lib/formatters';
 import { can } from '../lib/permissions';
+import {
+  defaultTechnicalSpecialties,
+  technicalSpecialtyLabel,
+} from '../lib/technicalSpecialties';
 import { supabase } from '../lib/supabase';
 import type { ServiceOrder } from '../types/domain';
 
@@ -33,12 +39,24 @@ function inputTime(value?: string | null) {
   return new Date(date.getTime() - offset * 60000).toISOString().slice(11, 16);
 }
 
+function durationLabel(minutes?: number | null) {
+  if (!minutes) return 'Duração não definida';
+  if (minutes < 60) return `${minutes} min`;
+  const hours = Math.floor(minutes / 60);
+  const rest = minutes % 60;
+  return rest ? `${hours}h ${rest}min` : `${hours}h`;
+}
+
 export function SchedulePage() {
   const { mode, user } = useAuth();
   const { orders, loading, error, refresh } = usePrimeTech();
+
   const [editingId, setEditingId] = useState<string | null>(null);
   const [date, setDate] = useState('');
   const [time, setTime] = useState('');
+  const [duration, setDuration] = useState('60');
+  const [notes, setNotes] = useState('');
+  const [specialtyFilter, setSpecialtyFilter] = useState('all');
   const [saving, setSaving] = useState(false);
   const [localError, setLocalError] = useState('');
 
@@ -48,12 +66,21 @@ export function SchedulePage() {
     () => orders
       .filter((order) => !['delivered', 'cancelled'].includes(order.status))
       .sort((a, b) => {
-        if (a.scheduled_at && b.scheduled_at) return new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime();
+        if (a.scheduled_at && b.scheduled_at) {
+          return new Date(a.scheduled_at).getTime() - new Date(b.scheduled_at).getTime();
+        }
         if (a.scheduled_at) return -1;
         if (b.scheduled_at) return 1;
         return a.order_number - b.order_number;
       }),
     [orders],
+  );
+
+  const visibleOrders = useMemo(
+    () => specialtyFilter === 'all'
+      ? openOrders
+      : openOrders.filter((order) => order.technical_specialty_code === specialtyFilter),
+    [openOrders, specialtyFilter],
   );
 
   const scheduled = openOrders.filter((order) => Boolean(order.scheduled_at));
@@ -66,6 +93,13 @@ export function SchedulePage() {
       && value.getDate() === today.getDate();
   }).length;
 
+  const printersCount = openOrders.filter(
+    (order) => order.technical_specialty_code === 'impressoras',
+  ).length;
+  const computersCount = openOrders.filter(
+    (order) => order.technical_specialty_code === 'computadores',
+  ).length;
+
   function openEditor(order: ServiceOrder) {
     if (!canSchedule) {
       setLocalError('Seu perfil pode consultar a agenda, mas não pode alterar a programação técnica.');
@@ -75,6 +109,8 @@ export function SchedulePage() {
     setEditingId(order.id);
     setDate(inputDate(order.scheduled_at));
     setTime(inputTime(order.scheduled_at) || '08:00');
+    setDuration(String(order.scheduled_duration_minutes ?? 60));
+    setNotes(order.schedule_notes ?? '');
     setLocalError('');
   }
 
@@ -84,10 +120,18 @@ export function SchedulePage() {
       return;
     }
 
+    const durationMinutes = Number.parseInt(duration, 10);
+
     if (!date || !time) {
       setLocalError('Informe data e horário da programação.');
       return;
     }
+
+    if (!Number.isFinite(durationMinutes) || durationMinutes < 15 || durationMinutes > 1440) {
+      setLocalError('Informe uma duração entre 15 e 1440 minutos.');
+      return;
+    }
+
     if (mode !== 'supabase' || !supabase) {
       setLocalError('A alteração da agenda está disponível no ambiente conectado ao Supabase.');
       return;
@@ -95,75 +139,258 @@ export function SchedulePage() {
 
     setSaving(true);
     setLocalError('');
+
     try {
       const scheduledAt = new Date(`${date}T${time}:00`).toISOString();
       const { error: updateError } = await supabase
         .from('service_orders')
-        .update({ scheduled_at: scheduledAt, updated_at: new Date().toISOString() })
+        .update({
+          scheduled_at: scheduledAt,
+          scheduled_duration_minutes: durationMinutes,
+          schedule_notes: notes.trim() || null,
+          updated_at: new Date().toISOString(),
+        })
         .eq('id', order.id);
 
       if (updateError) throw updateError;
       await refresh();
       setEditingId(null);
     } catch (cause) {
-      setLocalError(cause instanceof Error ? cause.message : 'Não foi possível salvar a programação.');
+      setLocalError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível salvar a programação.',
+      );
     } finally {
       setSaving(false);
     }
   }
 
   if (loading) {
-    return <div className="empty-state"><CalendarClock size={38}/><h3>Carregando programação</h3><p>Organizando as Ordens de Serviço abertas.</p></div>;
+    return (
+      <div className="empty-state">
+        <CalendarClock size={38} />
+        <h3>Carregando programação</h3>
+        <p>Organizando as Ordens de Serviço abertas.</p>
+      </div>
+    );
   }
 
-  return <>
-    <PageHeader
-      eyebrow="Operação técnica"
-      title="Programação técnica"
-      description="Agenda real das OS, com data, horário, técnico responsável e situação operacional."
-    />
+  return (
+    <>
+      <PageHeader
+        eyebrow="Operação técnica"
+        title="Programação técnica"
+        description="Agenda das OS por especialidade, data, horário, duração e responsável técnico."
+      />
 
-    {(error || localError) && <section className="notice" style={{ marginBottom: 16 }}>
-      <AlertTriangle size={20}/><div><strong>Não foi possível concluir a operação</strong><p>{localError || error}</p></div>
-    </section>}
+      {(error || localError) && (
+        <section className="notice" style={{ marginBottom: 16 }}>
+          <AlertTriangle size={20} />
+          <div>
+            <strong>Não foi possível concluir a operação</strong>
+            <p>{localError || error}</p>
+          </div>
+        </section>
+      )}
 
-    <div className="tech-summary">
-      <article><CalendarDays/><div><strong>{scheduled.length}</strong><span>Programadas</span></div></article>
-      <article><Clock3/><div><strong>{todayCount}</strong><span>Para hoje</span></div></article>
-      <article><AlertTriangle/><div><strong>{unscheduled}</strong><span>Sem horário</span></div></article>
-      <article><Wrench/><div><strong>{openOrders.length}</strong><span>OS abertas</span></div></article>
-    </div>
+      <div className="tech-summary">
+        <article>
+          <CalendarDays />
+          <div><strong>{scheduled.length}</strong><span>Programadas</span></div>
+        </article>
+        <article>
+          <Clock3 />
+          <div><strong>{todayCount}</strong><span>Para hoje</span></div>
+        </article>
+        <article>
+          <Printer />
+          <div><strong>{printersCount}</strong><span>Impressoras</span></div>
+        </article>
+        <article>
+          <CircuitBoard />
+          <div><strong>{computersCount}</strong><span>Computadores</span></div>
+        </article>
+      </div>
 
-    <section className="panel" style={{ marginTop: 20 }}>
-      {openOrders.length === 0 ? <div className="empty-state"><CheckCircle2 size={38}/><h3>Sem OS abertas</h3><p>A programação técnica está livre.</p></div> : <div className="schedule-list">
-        {openOrders.map((order) => {
-          const editing = editingId === order.id;
-          return <article key={order.id}>
-            <div className="schedule-time">
-              <Clock3/>
-              <strong>{order.scheduled_at ? dateTime.format(new Date(order.scheduled_at)) : 'Sem agenda'}</strong>
-            </div>
-            <div style={{ minWidth: 0 }}>
-              <span>{orderCode(order.order_number)}</span>
-              <h3>{order.client_name ?? 'Cliente não identificado'}</h3>
-              <p>{order.equipment ?? 'Equipamento não identificado'} · {order.technician ?? 'Técnico a confirmar'}</p>
-              <StatusBadge status={order.status}/>
+      <section className="panel" style={{ marginTop: 20, marginBottom: 16 }}>
+        <div className="panel-head" style={{ marginBottom: 0 }}>
+          <div>
+            <span className="eyebrow">Filtrar programação</span>
+            <h2>Fila por especialidade</h2>
+          </div>
+          <div className="quick-actions">
+            <button
+              type="button"
+              className={specialtyFilter === 'all' ? 'primary-button' : 'ghost-button'}
+              onClick={() => setSpecialtyFilter('all')}
+            >
+              Todas ({openOrders.length})
+            </button>
+            {defaultTechnicalSpecialties.map((specialty) => {
+              const count = openOrders.filter(
+                (order) => order.technical_specialty_code === specialty.code,
+              ).length;
 
-              {editing && <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 12, alignItems: 'end' }}>
-                <label style={{ display: 'grid', gap: 4 }}><span>Data</span><input type="date" value={date} onChange={(event) => setDate(event.target.value)}/></label>
-                <label style={{ display: 'grid', gap: 4 }}><span>Horário</span><input type="time" value={time} onChange={(event) => setTime(event.target.value)}/></label>
-                <button type="button" disabled={saving} onClick={() => void saveSchedule(order)}><Save size={15}/> Salvar</button>
-                <button type="button" className="ghost-button" disabled={saving} onClick={() => setEditingId(null)}>Cancelar</button>
-              </div>}
-            </div>
-            <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
-              <CalendarDays className="schedule-icon"/>
-              {canSchedule && <button type="button" className="ghost-button" onClick={() => openEditor(order)}><CalendarClock size={15}/> {order.scheduled_at ? 'Reagendar' : 'Programar'}</button>}
-              <Link to={`/ordens/${order.id}`} className="ghost-button">Ver OS</Link>
-            </div>
-          </article>;
-        })}
-      </div>}
-    </section>
-  </>;
+              return (
+                <button
+                  key={specialty.code}
+                  type="button"
+                  className={specialtyFilter === specialty.code ? 'primary-button' : 'ghost-button'}
+                  onClick={() => setSpecialtyFilter(specialty.code)}
+                >
+                  {specialty.shortLabel} ({count})
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      </section>
+
+      <section className="panel">
+        {visibleOrders.length === 0 ? (
+          <div className="empty-state">
+            <CheckCircle2 size={38} />
+            <h3>Sem OS nesta fila</h3>
+            <p>
+              {specialtyFilter === 'all'
+                ? 'A programação técnica está livre.'
+                : `Não existem OS abertas em ${technicalSpecialtyLabel(specialtyFilter)}.`}
+            </p>
+          </div>
+        ) : (
+          <div className="schedule-list">
+            {visibleOrders.map((order) => {
+              const editing = editingId === order.id;
+
+              return (
+                <article key={order.id}>
+                  <div className="schedule-time">
+                    <Clock3 />
+                    <strong>
+                      {order.scheduled_at
+                        ? dateTime.format(new Date(order.scheduled_at))
+                        : 'Sem agenda'}
+                    </strong>
+                  </div>
+
+                  <div style={{ minWidth: 0, flex: 1 }}>
+                    <span>{orderCode(order.order_number)}</span>
+                    <h3>{order.client_name ?? 'Cliente não identificado'}</h3>
+                    <p>
+                      {order.equipment ?? 'Equipamento não identificado'}
+                      {' · '}
+                      {order.technician ?? 'Técnico a confirmar'}
+                    </p>
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginTop: 8 }}>
+                      <span className="status">
+                        {technicalSpecialtyLabel(order.technical_specialty_code)}
+                      </span>
+                      <span className="status">
+                        {durationLabel(order.scheduled_duration_minutes)}
+                      </span>
+                      <StatusBadge status={order.status} />
+                    </div>
+
+                    {order.schedule_notes && !editing && (
+                      <p style={{ marginTop: 8 }}>Programação: {order.schedule_notes}</p>
+                    )}
+
+                    {editing && (
+                      <div
+                        style={{
+                          display: 'grid',
+                          gridTemplateColumns: 'repeat(3, minmax(0, 1fr))',
+                          gap: 8,
+                          marginTop: 12,
+                          alignItems: 'end',
+                        }}
+                      >
+                        <label style={{ display: 'grid', gap: 4 }}>
+                          <span>Data</span>
+                          <input
+                            type="date"
+                            value={date}
+                            onChange={(event) => setDate(event.target.value)}
+                          />
+                        </label>
+                        <label style={{ display: 'grid', gap: 4 }}>
+                          <span>Horário</span>
+                          <input
+                            type="time"
+                            value={time}
+                            onChange={(event) => setTime(event.target.value)}
+                          />
+                        </label>
+                        <label style={{ display: 'grid', gap: 4 }}>
+                          <span>Duração (min)</span>
+                          <input
+                            type="number"
+                            min="15"
+                            max="1440"
+                            step="15"
+                            value={duration}
+                            onChange={(event) => setDuration(event.target.value)}
+                          />
+                        </label>
+                        <label style={{ display: 'grid', gap: 4, gridColumn: '1 / -1' }}>
+                          <span>Observações da programação</span>
+                          <textarea
+                            rows={2}
+                            value={notes}
+                            onChange={(event) => setNotes(event.target.value)}
+                            placeholder="Peças previstas, prioridade, instruções de bancada..."
+                          />
+                        </label>
+                        <div className="quick-actions" style={{ gridColumn: '1 / -1' }}>
+                          <button
+                            type="button"
+                            disabled={saving}
+                            onClick={() => void saveSchedule(order)}
+                          >
+                            <Save size={15} /> Salvar
+                          </button>
+                          <button
+                            type="button"
+                            className="ghost-button"
+                            disabled={saving}
+                            onClick={() => setEditingId(null)}
+                          >
+                            Cancelar
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+
+                  <div style={{ display: 'grid', gap: 8, justifyItems: 'end' }}>
+                    <CalendarDays className="schedule-icon" />
+                    {canSchedule && (
+                      <button
+                        type="button"
+                        className="ghost-button"
+                        onClick={() => openEditor(order)}
+                      >
+                        <CalendarClock size={15} />
+                        {order.scheduled_at ? 'Reagendar' : 'Programar'}
+                      </button>
+                    )}
+                    <Link to={`/ordens/${order.id}`} className="ghost-button">Ver OS</Link>
+                  </div>
+                </article>
+              );
+            })}
+          </div>
+        )}
+      </section>
+
+      <section className="panel" style={{ marginTop: 16 }}>
+        <div className="mini-kpis">
+          <div><span>{unscheduled}</span><small>OS sem data/hora</small></div>
+          <div><span>{printersCount}</span><small>Fila de impressoras</small></div>
+          <div><span>{computersCount}</span><small>Fila de computadores</small></div>
+        </div>
+      </section>
+    </>
+  );
 }
