@@ -70,13 +70,14 @@ export function StockHistoryPage() {
       return;
     }
 
+    const activeClient = client;
     let alive = true;
 
     async function load() {
       setLoading(true);
       setError('');
       try {
-        const { data, error: loadError } = await client
+        const { data, error: loadError } = await activeClient
           .from('stock_movements')
           .select('id, stock_item_id, service_order_id, movement_type, quantity, unit_cost, notes, created_at, balance_after, reserved_after, source')
           .eq('company_id', companyId)
