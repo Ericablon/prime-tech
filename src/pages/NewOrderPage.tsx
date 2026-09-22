@@ -1,34 +1,30 @@
 import {
   AlertTriangle,
   ArrowLeft,
+  CircuitBoard,
   Laptop,
+  Printer,
   Save,
   UserRound,
   Wrench,
 } from 'lucide-react';
-
 import {
   useMemo,
   useState,
   type CSSProperties,
   type FormEvent,
 } from 'react';
-
-import {
-  Link,
-  useNavigate,
-} from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 
 import { PageHeader } from '../components/ui/PageHeader';
-
 import { usePrimeTech } from '../contexts/PrimeTechContext';
-
 import { equipmentCode } from '../lib/formatters';
-
-import type {
-  CreateOrderInput,
-  Priority,
-} from '../types/domain';
+import {
+  defaultTechnicalSpecialties,
+  inferTechnicalSpecialty,
+  technicalSpecialtyLabel,
+} from '../lib/technicalSpecialties';
+import type { CreateOrderInput, Priority } from '../types/domain';
 
 const initialForm: CreateOrderInput = {
   client_id: '',
@@ -36,192 +32,128 @@ const initialForm: CreateOrderInput = {
   intake_type: 'Orçamento',
   reported_issue: '',
   priority: 'normal',
+  technical_specialty_code: null,
   assigned_technician_id: null,
 };
 
-const closedStatuses = [
-  'delivered',
-  'cancelled',
-];
+const closedStatuses = ['delivered', 'cancelled'];
 
 export function NewOrderPage() {
   const navigate = useNavigate();
+  const { clients, equipment, orders, loading, createOrder } = usePrimeTech();
 
-  const {
-    clients,
-    equipment,
-    orders,
-    loading,
-    createOrder,
-  } = usePrimeTech();
+  const [form, setForm] = useState<CreateOrderInput>(initialForm);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState('');
 
-  const [form, setForm] =
-    useState<CreateOrderInput>(
-      initialForm,
-    );
+  const clientEquipment = useMemo(
+    () => equipment.filter((item) => item.client_id === form.client_id),
+    [equipment, form.client_id],
+  );
 
-  const [busy, setBusy] =
-    useState(false);
+  const selectedClient = useMemo(
+    () => clients.find((client) => client.id === form.client_id),
+    [clients, form.client_id],
+  );
 
-  const [error, setError] =
-    useState('');
+  const selectedEquipment = useMemo(
+    () => equipment.find((item) => item.id === form.equipment_id),
+    [equipment, form.equipment_id],
+  );
 
-  const clientEquipment =
-    useMemo(
-      () =>
-        equipment.filter(
-          (item) =>
-            item.client_id ===
-            form.client_id,
-        ),
-      [
-        equipment,
-        form.client_id,
-      ],
-    );
+  const activeOrder = useMemo(
+    () => orders.find(
+      (order) => order.equipment_id === form.equipment_id
+        && !closedStatuses.includes(order.status),
+    ),
+    [form.equipment_id, orders],
+  );
 
-  const selectedClient =
-    useMemo(
-      () =>
-        clients.find(
-          (client) =>
-            client.id ===
-            form.client_id,
-        ),
-      [
-        clients,
-        form.client_id,
-      ],
-    );
+  function handleClientChange(clientId: string) {
+    setError('');
+    setForm((current) => ({
+      ...current,
+      client_id: clientId,
+      equipment_id: '',
+      technical_specialty_code: null,
+      assigned_technician_id: null,
+    }));
+  }
 
-  const selectedEquipment =
-    useMemo(
-      () =>
-        equipment.find(
-          (item) =>
-            item.id ===
-            form.equipment_id,
-        ),
-      [
-        equipment,
-        form.equipment_id,
-      ],
-    );
+  function handleEquipmentChange(equipmentId: string) {
+    setError('');
+    const item = equipment.find((entry) => entry.id === equipmentId);
+    const specialty = item?.technical_specialty_code
+      ?? inferTechnicalSpecialty(item?.category);
 
-  const activeOrder =
-    useMemo(
-      () =>
-        orders.find(
-          (order) =>
-            order.equipment_id ===
-              form.equipment_id &&
-            !closedStatuses.includes(
-              order.status,
-            ),
-        ),
-      [
-        form.equipment_id,
-        orders,
-      ],
-    );
+    setForm((current) => ({
+      ...current,
+      equipment_id: equipmentId,
+      technical_specialty_code: specialty,
+      assigned_technician_id: null,
+    }));
+  }
 
-  const handleClientChange = (
-    clientId: string,
-  ) => {
+  async function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
     setError('');
 
-    setForm(
-      (current) => ({
-        ...current,
-        client_id: clientId,
-        equipment_id: '',
-      }),
-    );
-  };
+    if (!form.client_id) {
+      setError('Selecione o cliente.');
+      return;
+    }
 
-  const handleSubmit =
-    async (
-      event: FormEvent<HTMLFormElement>,
-    ) => {
-      event.preventDefault();
+    if (!form.equipment_id) {
+      setError('Selecione o equipamento.');
+      return;
+    }
 
-      setError('');
+    if (!form.technical_specialty_code) {
+      setError('Defina a especialidade técnica responsável pela OS.');
+      return;
+    }
 
-      if (!form.client_id) {
-        setError(
-          'Selecione o cliente.',
-        );
-        return;
-      }
+    if (!form.reported_issue.trim()) {
+      setError('Informe o problema relatado pelo cliente.');
+      return;
+    }
 
-      if (!form.equipment_id) {
-        setError(
-          'Selecione o equipamento.',
-        );
-        return;
-      }
+    if (activeOrder) {
+      setError(`Este equipamento já possui a OS #${activeOrder.order_number} ativa.`);
+      return;
+    }
 
-      if (
-        !form.reported_issue.trim()
-      ) {
-        setError(
-          'Informe o problema relatado pelo cliente.',
-        );
-        return;
-      }
+    setBusy(true);
 
-      if (activeOrder) {
-        setError(
-          `Este equipamento já possui a OS #${activeOrder.order_number} ativa.`,
-        );
-        return;
-      }
+    try {
+      const created = await createOrder({
+        ...form,
+        reported_issue: form.reported_issue.trim(),
+        assigned_technician_id: form.assigned_technician_id ?? null,
+      });
 
-      setBusy(true);
-
-      try {
-        const created =
-          await createOrder({
-            ...form,
-
-            reported_issue:
-              form.reported_issue.trim(),
-
-            assigned_technician_id:
-              form.assigned_technician_id ??
-              null,
-          });
-
-        navigate(
-          `/ordens/${created.id}`,
-        );
-      } catch (cause) {
-        setError(
-          cause instanceof Error
-            ? cause.message
-            : 'Não foi possível criar a Ordem de Serviço.',
-        );
-      } finally {
-        setBusy(false);
-      }
-    };
+      navigate(`/ordens/${created.id}`);
+    } catch (cause) {
+      setError(
+        cause instanceof Error
+          ? cause.message
+          : 'Não foi possível criar a Ordem de Serviço.',
+      );
+    } finally {
+      setBusy(false);
+    }
+  }
 
   return (
     <>
       <PageHeader
         eyebrow="Comercial"
         title="Nova Ordem de Serviço"
-        description="Abra a OS vinculando cliente e equipamento. O Cronos impede duas Ordens de Serviço ativas para o mesmo equipamento."
+        description="Abra a OS, defina a especialidade responsável e encaminhe o equipamento para a fila técnica correta."
       />
 
       <section className="panel">
-        <Link
-          to="/ordens"
-          className="back-link"
-          style={{
-            marginBottom: 20,
-          }}
-        >
+        <Link to="/ordens" className="back-link" style={{ marginBottom: 20 }}>
           <ArrowLeft size={17} />
           Voltar para Ordens de Serviço
         </Link>
@@ -229,478 +161,208 @@ export function NewOrderPage() {
         {loading ? (
           <div className="empty-state">
             <Wrench size={38} />
-
-            <h3>
-              Carregando dados
-            </h3>
-
-            <p>
-              Buscando clientes e equipamentos cadastrados.
-            </p>
+            <h3>Carregando dados</h3>
+            <p>Buscando clientes e equipamentos cadastrados.</p>
           </div>
         ) : (
-          <form
-            onSubmit={handleSubmit}
-          >
-            <div
-              style={{
-                display: 'grid',
-                gridTemplateColumns:
-                  'repeat(2, minmax(0, 1fr))',
-                gap: 16,
-              }}
-            >
+          <form onSubmit={(event) => void handleSubmit(event)}>
+            <div style={formGridStyle}>
               <label>
-                <FieldLabel>
-                  Cliente
-                </FieldLabel>
-
+                <FieldLabel>Cliente</FieldLabel>
                 <select
                   required
-                  value={
-                    form.client_id
-                  }
-                  onChange={(event) =>
-                    handleClientChange(
-                      event.target
-                        .value,
-                    )
-                  }
+                  value={form.client_id}
+                  onChange={(event) => handleClientChange(event.target.value)}
                   style={fieldStyle}
                 >
-                  <option value="">
-                    Selecione o cliente
-                  </option>
-
-                  {clients.map(
-                    (client) => (
-                      <option
-                        key={
-                          client.id
-                        }
-                        value={
-                          client.id
-                        }
-                      >
-                        {client.name}
-                        {client.document
-                          ? ` · ${client.document}`
-                          : ''}
-                      </option>
-                    ),
-                  )}
+                  <option value="">Selecione o cliente</option>
+                  {clients.map((client) => (
+                    <option key={client.id} value={client.id}>
+                      {client.name}{client.document ? ` · ${client.document}` : ''}
+                    </option>
+                  ))}
                 </select>
               </label>
 
               <label>
-                <FieldLabel>
-                  Equipamento
-                </FieldLabel>
-
+                <FieldLabel>Equipamento</FieldLabel>
                 <select
                   required
-                  disabled={
-                    !form.client_id
-                  }
-                  value={
-                    form.equipment_id
-                  }
-                  onChange={(event) => {
-                    setError('');
-
-                    setForm(
-                      (current) => ({
-                        ...current,
-
-                        equipment_id:
-                          event.target
-                            .value,
-                      }),
-                    );
-                  }}
-                  style={{
-                    ...fieldStyle,
-
-                    opacity:
-                      form.client_id
-                        ? 1
-                        : 0.55,
-                  }}
+                  disabled={!form.client_id}
+                  value={form.equipment_id}
+                  onChange={(event) => handleEquipmentChange(event.target.value)}
+                  style={{ ...fieldStyle, opacity: form.client_id ? 1 : 0.55 }}
                 >
                   <option value="">
                     {!form.client_id
                       ? 'Selecione o cliente primeiro'
                       : clientEquipment.length
-                      ? 'Selecione o equipamento'
-                      : 'Cliente sem equipamentos'}
+                        ? 'Selecione o equipamento'
+                        : 'Cliente sem equipamentos'}
                   </option>
-
-                  {clientEquipment.map(
-                    (item) => (
-                      <option
-                        key={
-                          item.id
-                        }
-                        value={
-                          item.id
-                        }
-                      >
-                        {equipmentCode(
-                          item.technical_number,
-                        )}
-                        {' · '}
-                        {[
-                          item.category,
-                          item.brand,
-                          item.model,
-                        ]
-                          .filter(
-                            Boolean,
-                          )
-                          .join(' ')}
-                      </option>
-                    ),
-                  )}
+                  {clientEquipment.map((item) => (
+                    <option key={item.id} value={item.id}>
+                      {equipmentCode(item.technical_number)} · {[
+                        item.category,
+                        item.brand,
+                        item.model,
+                      ].filter(Boolean).join(' ')}
+                    </option>
+                  ))}
                 </select>
 
-                {form.client_id &&
-                  clientEquipment.length ===
-                    0 && (
-                    <small
-                      style={helpStyle}
-                    >
-                      Este cliente ainda não possui equipamentos cadastrados.
-                      {' '}
-                      <Link
-                        to="/equipamentos"
-                        style={{
-                          color:
-                            'var(--blue2)',
-                        }}
-                      >
-                        Cadastrar equipamento
-                      </Link>
-                    </small>
-                  )}
+                {form.client_id && clientEquipment.length === 0 && (
+                  <small style={helpStyle}>
+                    Este cliente ainda não possui equipamentos cadastrados.{' '}
+                    <Link to="/equipamentos" style={{ color: 'var(--blue2)' }}>
+                      Cadastrar equipamento
+                    </Link>
+                  </small>
+                )}
               </label>
 
               <label>
-                <FieldLabel>
-                  Tipo de entrada
-                </FieldLabel>
-
+                <FieldLabel>Especialidade técnica</FieldLabel>
                 <select
-                  value={
-                    form.intake_type
-                  }
-                  onChange={(event) =>
-                    setForm(
-                      (current) => ({
-                        ...current,
-
-                        intake_type:
-                          event.target
-                            .value,
-                      }),
-                    )
-                  }
+                  required
+                  value={form.technical_specialty_code ?? ''}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    technical_specialty_code: event.target.value || null,
+                    assigned_technician_id: null,
+                  }))}
                   style={fieldStyle}
                 >
-                  <option value="Orçamento">
-                    Orçamento
-                  </option>
+                  <option value="">Selecione a especialidade</option>
+                  {defaultTechnicalSpecialties.map((specialty) => (
+                    <option key={specialty.code} value={specialty.code}>
+                      {specialty.shortLabel}
+                    </option>
+                  ))}
+                </select>
+                <small style={helpStyle}>
+                  O Cronos usa esta informação para separar as filas e a programação técnica.
+                </small>
+              </label>
 
-                  <option value="Manutenção">
-                    Manutenção
-                  </option>
-
-                  <option value="Diagnóstico">
-                    Diagnóstico
-                  </option>
-
-                  <option value="Garantia">
-                    Garantia
-                  </option>
+              <label>
+                <FieldLabel>Tipo de entrada</FieldLabel>
+                <select
+                  value={form.intake_type}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    intake_type: event.target.value,
+                  }))}
+                  style={fieldStyle}
+                >
+                  <option value="Orçamento">Orçamento</option>
+                  <option value="Manutenção">Manutenção</option>
+                  <option value="Diagnóstico">Diagnóstico</option>
+                  <option value="Garantia">Garantia</option>
                 </select>
               </label>
 
               <label>
-                <FieldLabel>
-                  Prioridade
-                </FieldLabel>
-
+                <FieldLabel>Prioridade</FieldLabel>
                 <select
-                  value={
-                    form.priority
-                  }
-                  onChange={(event) =>
-                    setForm(
-                      (current) => ({
-                        ...current,
-
-                        priority:
-                          event.target
-                            .value as Priority,
-                      }),
-                    )
-                  }
+                  value={form.priority}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    priority: event.target.value as Priority,
+                  }))}
                   style={fieldStyle}
                 >
-                  <option value="low">
-                    Baixa
-                  </option>
-
-                  <option value="normal">
-                    Normal
-                  </option>
-
-                  <option value="high">
-                    Alta
-                  </option>
-
-                  <option value="urgent">
-                    Urgente
-                  </option>
+                  <option value="low">Baixa</option>
+                  <option value="normal">Normal</option>
+                  <option value="high">Alta</option>
+                  <option value="urgent">Urgente</option>
                 </select>
               </label>
 
-              <label
-                style={{
-                  gridColumn:
-                    '1 / -1',
-                }}
-              >
-                <FieldLabel>
-                  Problema relatado pelo cliente
-                </FieldLabel>
-
+              <label style={{ gridColumn: '1 / -1' }}>
+                <FieldLabel>Problema relatado pelo cliente</FieldLabel>
                 <textarea
                   required
                   rows={5}
-                  value={
-                    form.reported_issue
-                  }
-                  onChange={(event) =>
-                    setForm(
-                      (current) => ({
-                        ...current,
-
-                        reported_issue:
-                          event.target
-                            .value,
-                      }),
-                    )
-                  }
+                  value={form.reported_issue}
+                  onChange={(event) => setForm((current) => ({
+                    ...current,
+                    reported_issue: event.target.value,
+                  }))}
                   placeholder="Descreva exatamente o problema informado pelo cliente..."
-                  style={{
-                    ...fieldStyle,
-                    resize:
-                      'vertical',
-                  }}
+                  style={{ ...fieldStyle, resize: 'vertical' }}
                 />
               </label>
             </div>
 
-            {selectedClient &&
-              selectedEquipment && (
-                <div
-                  style={{
-                    marginTop: 18,
-
-                    display: 'grid',
-
-                    gridTemplateColumns:
-                      'repeat(2, minmax(0, 1fr))',
-
-                    gap: 12,
-                  }}
-                >
-                  <div
-                    style={summaryStyle}
-                  >
-                    <UserRound
-                      size={19}
-                    />
-
-                    <div>
-                      <strong>
-                        {
-                          selectedClient.name
-                        }
-                      </strong>
-
-                      <small>
-                        {selectedClient.phone ||
-                          selectedClient.email ||
-                          'Sem contato informado'}
-                      </small>
-                    </div>
-                  </div>
-
-                  <div
-                    style={summaryStyle}
-                  >
-                    <Laptop
-                      size={19}
-                    />
-
-                    <div>
-                      <strong>
-                        {[
-                          selectedEquipment.category,
-                          selectedEquipment.brand,
-                          selectedEquipment.model,
-                        ]
-                          .filter(
-                            Boolean,
-                          )
-                          .join(' ')}
-                      </strong>
-
-                      <small>
-                        {equipmentCode(
-                          selectedEquipment.technical_number,
-                        )}
-                        {selectedEquipment.serial_number
-                          ? ` · Série ${selectedEquipment.serial_number}`
-                          : ''}
-                      </small>
-                    </div>
+            {selectedClient && selectedEquipment && (
+              <div style={summaryGridStyle}>
+                <div style={summaryStyle}>
+                  <UserRound size={19} />
+                  <div>
+                    <strong>{selectedClient.name}</strong>
+                    <small>{selectedClient.phone || selectedClient.email || 'Sem contato informado'}</small>
                   </div>
                 </div>
-              )}
+
+                <div style={summaryStyle}>
+                  <Laptop size={19} />
+                  <div>
+                    <strong>{[
+                      selectedEquipment.category,
+                      selectedEquipment.brand,
+                      selectedEquipment.model,
+                    ].filter(Boolean).join(' ')}</strong>
+                    <small>
+                      {equipmentCode(selectedEquipment.technical_number)}
+                      {selectedEquipment.serial_number ? ` · Série ${selectedEquipment.serial_number}` : ''}
+                    </small>
+                  </div>
+                </div>
+
+                <div style={{ ...summaryStyle, gridColumn: '1 / -1' }}>
+                  {form.technical_specialty_code === 'impressoras'
+                    ? <Printer size={19} />
+                    : <CircuitBoard size={19} />}
+                  <div>
+                    <strong>Fila: {technicalSpecialtyLabel(form.technical_specialty_code)}</strong>
+                    <small>
+                      O diagnóstico e a programação serão organizados por esta especialidade.
+                    </small>
+                  </div>
+                </div>
+              </div>
+            )}
 
             {activeOrder && (
-              <div
-                style={{
-                  marginTop: 18,
-                  padding: 14,
-
-                  display: 'flex',
-                  gap: 12,
-                  alignItems:
-                    'flex-start',
-
-                  border:
-                    '1px solid rgba(244,184,74,.28)',
-
-                  background:
-                    'rgba(244,184,74,.07)',
-
-                  borderRadius: 12,
-                }}
-              >
-                <AlertTriangle
-                  size={20}
-                  style={{
-                    color:
-                      'var(--amber)',
-                    flex:
-                      '0 0 auto',
-                  }}
-                />
-
+              <div style={warningStyle}>
+                <AlertTriangle size={20} style={{ color: 'var(--amber)', flex: '0 0 auto' }} />
                 <div>
-                  <strong
-                    style={{
-                      fontSize: 13,
-                    }}
-                  >
-                    Equipamento já possui uma OS ativa
-                  </strong>
-
-                  <p
-                    style={{
-                      color:
-                        'var(--muted)',
-                      fontSize: 12,
-                      marginTop: 4,
-                    }}
-                  >
-                    A OS #
-                    {
-                      activeOrder.order_number
-                    } precisa ser concluída ou cancelada antes da abertura de outra OS para este equipamento.
+                  <strong style={{ fontSize: 13 }}>Equipamento já possui uma OS ativa</strong>
+                  <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 4 }}>
+                    A OS #{activeOrder.order_number} precisa ser concluída ou cancelada antes da abertura de outra OS.
                   </p>
-
                   <Link
                     to={`/ordens/${activeOrder.id}`}
-                    style={{
-                      display:
-                        'inline-block',
-
-                      marginTop: 8,
-
-                      color:
-                        'var(--blue2)',
-
-                      fontSize: 12,
-                      fontWeight: 700,
-                    }}
+                    style={{ display: 'inline-block', marginTop: 8, color: 'var(--blue2)', fontSize: 12, fontWeight: 700 }}
                   >
-                    Abrir OS #
-                    {
-                      activeOrder.order_number
-                    }
+                    Abrir OS #{activeOrder.order_number}
                   </Link>
                 </div>
               </div>
             )}
 
-            {error && (
-              <div
-                style={{
-                  marginTop: 18,
-
-                  padding: 12,
-
-                  borderRadius: 10,
-
-                  border:
-                    '1px solid rgba(239,101,113,.25)',
-
-                  background:
-                    'rgba(239,101,113,.08)',
-
-                  color:
-                    '#f3838c',
-
-                  fontSize: 13,
-                }}
-              >
-                {error}
-              </div>
-            )}
+            {error && <div style={errorStyle}>{error}</div>}
 
             {!clients.length && (
-              <div
-                style={{
-                  marginTop: 18,
-                }}
-                className="notice"
-              >
+              <div style={{ marginTop: 18 }} className="notice">
                 <AlertTriangle />
-
                 <div>
-                  <strong>
-                    Nenhum cliente cadastrado
-                  </strong>
-
-                  <p>
-                    Antes de abrir uma OS, cadastre o cliente e depois o equipamento.
-                  </p>
-
+                  <strong>Nenhum cliente cadastrado</strong>
+                  <p>Antes de abrir uma OS, cadastre o cliente e depois o equipamento.</p>
                   <Link
                     to="/clientes"
-                    style={{
-                      display:
-                        'inline-block',
-                      marginTop: 8,
-                      color:
-                        'var(--blue2)',
-                      fontSize: 12,
-                      fontWeight: 700,
-                    }}
+                    style={{ display: 'inline-block', marginTop: 8, color: 'var(--blue2)', fontSize: 12, fontWeight: 700 }}
                   >
                     Ir para Clientes
                   </Link>
@@ -708,224 +370,136 @@ export function NewOrderPage() {
               </div>
             )}
 
-            <div
-              className="form-footer"
-              style={{
-                marginTop: 22,
-                justifyContent:
-                  'flex-end',
-              }}
-            >
-              <Link
-                to="/ordens"
-                className="ghost-button"
-              >
-                Cancelar
-              </Link>
-
+            <div className="form-footer" style={{ marginTop: 22, justifyContent: 'flex-end' }}>
+              <Link to="/ordens" className="ghost-button">Cancelar</Link>
               <button
                 type="submit"
                 className="primary-button"
                 disabled={
-                  busy ||
-                  !form.client_id ||
-                  !form.equipment_id ||
-                  !form.reported_issue.trim() ||
-                  Boolean(
-                    activeOrder,
-                  )
+                  busy
+                  || !form.client_id
+                  || !form.equipment_id
+                  || !form.technical_specialty_code
+                  || !form.reported_issue.trim()
+                  || Boolean(activeOrder)
                 }
               >
                 <Save size={17} />
-
-                {busy
-                  ? 'Criando OS...'
-                  : 'Criar Ordem de Serviço'}
+                {busy ? 'Criando OS...' : 'Criar Ordem de Serviço'}
               </button>
             </div>
           </form>
         )}
       </section>
 
-      <section
-        className="panel"
-        style={{
-          marginTop: 16,
-        }}
-      >
+      <section className="panel" style={{ marginTop: 16 }}>
         <div className="panel-head">
           <div>
-            <span className="eyebrow">
-              Próxima etapa
-            </span>
-
-            <h2>
-              Fluxo automático
-            </h2>
+            <span className="eyebrow">Próxima etapa</span>
+            <h2>Fluxo automático</h2>
           </div>
         </div>
 
-        <div
-          style={{
-            display: 'grid',
-            gridTemplateColumns:
-              'repeat(3, minmax(0, 1fr))',
-            gap: 12,
-          }}
-        >
-          <FlowItem
-            number="1"
-            title="OS aberta"
-            text="Cliente e equipamento ficam vinculados à ordem."
-          />
-
-          <FlowItem
-            number="2"
-            title="Fila técnica"
-            text="A OS entra como aguardando técnico para diagnóstico."
-          />
-
-          <FlowItem
-            number="3"
-            title="Retorno comercial"
-            text="Após o diagnóstico, a OS volta ao Comercial para orçamento e aprovação."
-          />
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, minmax(0, 1fr))', gap: 12 }}>
+          <FlowItem number="1" title="OS aberta" text="Cliente, equipamento e especialidade ficam vinculados à ordem." />
+          <FlowItem number="2" title="Fila especializada" text="A OS entra na fila de Impressoras ou Computadores para diagnóstico." />
+          <FlowItem number="3" title="Retorno comercial" text="Após o diagnóstico, a OS volta ao Comercial para orçamento e aprovação." />
         </div>
       </section>
     </>
   );
 }
 
-function FieldLabel({
-  children,
-}: {
-  children: React.ReactNode;
-}) {
+function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
-    <span
-      style={{
-        display: 'block',
-        marginBottom: 6,
-        color: 'var(--muted)',
-        fontSize: 12,
-      }}
-    >
+    <span style={{ display: 'block', marginBottom: 6, color: 'var(--muted)', fontSize: 12 }}>
       {children}
     </span>
   );
 }
 
-function FlowItem({
-  number,
-  title,
-  text,
-}: {
-  number: string;
-  title: string;
-  text: string;
-}) {
+function FlowItem({ number, title, text }: { number: string; title: string; text: string }) {
   return (
-    <article
-      style={{
-        padding: 15,
-        borderRadius: 12,
-        border:
-          '1px solid var(--line)',
-        background: '#0c1728',
-      }}
-    >
-      <span
-        style={{
-          width: 28,
-          height: 28,
-
-          display: 'grid',
-          placeItems:
-            'center',
-
-          borderRadius: 8,
-
-          background:
-            'rgba(47,140,255,.15)',
-
-          color:
-            'var(--blue2)',
-
-          fontSize: 12,
-          fontWeight: 800,
-
-          marginBottom: 10,
-        }}
-      >
+    <article style={{ padding: 15, borderRadius: 12, border: '1px solid var(--line)', background: '#0c1728' }}>
+      <span style={{
+        width: 28,
+        height: 28,
+        display: 'grid',
+        placeItems: 'center',
+        borderRadius: 8,
+        background: 'rgba(47,140,255,.15)',
+        color: 'var(--blue2)',
+        fontSize: 12,
+        fontWeight: 800,
+        marginBottom: 10,
+      }}>
         {number}
       </span>
-
-      <strong
-        style={{
-          display: 'block',
-          fontSize: 13,
-        }}
-      >
-        {title}
-      </strong>
-
-      <p
-        style={{
-          color: 'var(--muted)',
-          fontSize: 12,
-          marginTop: 5,
-          lineHeight: 1.5,
-        }}
-      >
-        {text}
-      </p>
+      <strong style={{ display: 'block', fontSize: 13 }}>{title}</strong>
+      <p style={{ color: 'var(--muted)', fontSize: 12, marginTop: 5, lineHeight: 1.5 }}>{text}</p>
     </article>
   );
 }
 
+const formGridStyle: CSSProperties = {
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: 16,
+};
+
 const fieldStyle: CSSProperties = {
   width: '100%',
   minHeight: 42,
-
   padding: '10px 12px',
-
   borderRadius: 10,
-
-  border:
-    '1px solid var(--line)',
-
+  border: '1px solid var(--line)',
   background: '#0b1728',
-
   color: '#ffffff',
-
   outline: 'none',
 };
 
 const helpStyle: CSSProperties = {
   display: 'block',
-
   marginTop: 6,
-
   color: 'var(--muted)',
-
   fontSize: 11,
+};
+
+const summaryGridStyle: CSSProperties = {
+  marginTop: 18,
+  display: 'grid',
+  gridTemplateColumns: 'repeat(2, minmax(0, 1fr))',
+  gap: 12,
 };
 
 const summaryStyle: CSSProperties = {
   display: 'flex',
-
   alignItems: 'center',
-
   gap: 11,
-
   padding: 13,
-
-  border:
-    '1px solid var(--line)',
-
+  border: '1px solid var(--line)',
   borderRadius: 12,
-
   background: '#0c1728',
-
   color: 'var(--blue2)',
+};
+
+const warningStyle: CSSProperties = {
+  marginTop: 18,
+  padding: 14,
+  display: 'flex',
+  gap: 12,
+  alignItems: 'flex-start',
+  border: '1px solid rgba(244,184,74,.28)',
+  background: 'rgba(244,184,74,.07)',
+  borderRadius: 12,
+};
+
+const errorStyle: CSSProperties = {
+  marginTop: 18,
+  padding: 12,
+  borderRadius: 10,
+  border: '1px solid rgba(239,101,113,.25)',
+  background: 'rgba(239,101,113,.08)',
+  color: '#f3838c',
+  fontSize: 13,
 };
