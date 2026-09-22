@@ -43,12 +43,64 @@ const names: Record<RoleCode, string> = {
   fiscal: 'Fiscal Prime Tech',
 };
 
+async function loadPermissions(
+  client: NonNullable<typeof supabase>,
+  companyId: string,
+  roleCode: RoleCode,
+  accessProfileId?: string | null,
+) {
+  if (accessProfileId) {
+    const custom = await client
+      .from('access_profile_permissions')
+      .select('permission_code')
+      .eq('access_profile_id', accessProfileId);
+
+    if (!custom.error) {
+      return (custom.data ?? []).map((row) => String(row.permission_code) as Permission);
+    }
+  }
+
+  try {
+    const override = await client
+      .from('company_role_overrides')
+      .select('role_code')
+      .eq('company_id', companyId)
+      .eq('role_code', roleCode)
+      .maybeSingle();
+
+    if (!override.error && override.data) {
+      const companyPermissions = await client
+        .from('company_role_permissions')
+        .select('permission_code')
+        .eq('company_id', companyId)
+        .eq('role_code', roleCode);
+
+      if (!companyPermissions.error) {
+        return (companyPermissions.data ?? []).map(
+          (row) => String(row.permission_code) as Permission,
+        );
+      }
+    }
+  } catch {
+    // Compatibilidade antes da migration 0014.
+  }
+
+  const basePermissions = await client
+    .from('role_permissions')
+    .select('permission_code')
+    .eq('role_code', roleCode);
+
+  if (basePermissions.error) throw basePermissions.error;
+
+  return (basePermissions.data ?? []).map(
+    (row) => String(row.permission_code) as Permission,
+  );
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(() => {
     if (mode !== 'demo') return null;
-
     const raw = localStorage.getItem('cronos-user');
-
     return raw ? (JSON.parse(raw) as UserProfile) : null;
   });
 
@@ -65,21 +117,15 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
     const hydrate = async () => {
       try {
-        const { data, error: sessionError } =
-          await client.auth.getSession();
-
-        if (sessionError) {
-          throw sessionError;
-        }
+        const { data, error: sessionError } = await client.auth.getSession();
+        if (sessionError) throw sessionError;
 
         const authUser = data.session?.user;
-
         if (!authUser) {
           if (alive) {
             setUser(null);
             setLoading(false);
           }
-
           return;
         }
 
@@ -88,54 +134,64 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .select('*')
           .eq('id', authUser.id)
           .single();
-
-        if (profileError) {
-          throw profileError;
-        }
+        if (profileError) throw profileError;
 
         let resolved = profile as UserProfile;
 
         try {
-          const { data: access, error: accessError } = await client
+          let access: {
+            company_id?: string | null;
+            branch_id?: string | null;
+            role_code?: string | null;
+            access_profile_id?: string | null;
+          } | null = null;
+
+          const modernAccess = await client
             .from('user_company_access')
-            .select('company_id, branch_id, role_code')
+            .select('company_id, branch_id, role_code, access_profile_id')
             .eq('user_id', authUser.id)
             .eq('active', true)
             .order('company_id')
             .limit(1)
             .maybeSingle();
 
-          if (accessError) {
-            throw accessError;
+          if (!modernAccess.error) {
+            access = modernAccess.data;
+          } else {
+            const legacyAccess = await client
+              .from('user_company_access')
+              .select('company_id, branch_id, role_code')
+              .eq('user_id', authUser.id)
+              .eq('active', true)
+              .order('company_id')
+              .limit(1)
+              .maybeSingle();
+            if (legacyAccess.error) throw legacyAccess.error;
+            access = legacyAccess.data;
           }
 
           if (access?.company_id && access?.role_code) {
             const roleCode = access.role_code as RoleCode;
+            const companyId = String(access.company_id);
 
-            const [permissionsResult, companyResult] = await Promise.all([
-              client
-                .from('role_permissions')
-                .select('permission_code')
-                .eq('role_code', roleCode),
+            const [permissions, companyResult] = await Promise.all([
+              loadPermissions(
+                client,
+                companyId,
+                roleCode,
+                access.access_profile_id ? String(access.access_profile_id) : null,
+              ),
               client
                 .from('companies')
                 .select('organization_id')
-                .eq('id', access.company_id)
+                .eq('id', companyId)
                 .maybeSingle(),
             ]);
-
-            if (permissionsResult.error) {
-              throw permissionsResult.error;
-            }
-
-            const permissions = (permissionsResult.data ?? []).map(
-              (row) => String(row.permission_code) as Permission,
-            );
 
             resolved = {
               ...resolved,
               role_code: roleCode,
-              company_id: String(access.company_id),
+              company_id: companyId,
               branch_id: access.branch_id ? String(access.branch_id) : undefined,
               organization_id: companyResult.data?.organization_id
                 ? String(companyResult.data.organization_id)
@@ -156,7 +212,6 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }
       } catch (error) {
         console.error('Erro ao carregar usuário:', error);
-
         if (alive) {
           setUser(null);
           setLoading(false);
@@ -189,35 +244,20 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           role_code: role,
           active: true,
         };
-
         localStorage.setItem('cronos-user', JSON.stringify(next));
         setUser(next);
       },
 
       async loginWithPassword(email, password) {
         const client = supabase;
-
-        if (!client) {
-          throw new Error('Supabase não configurado');
-        }
-
-        const { error } = await client.auth.signInWithPassword({
-          email,
-          password,
-        });
-
-        if (error) {
-          throw error;
-        }
+        if (!client) throw new Error('Supabase não configurado');
+        const { error } = await client.auth.signInWithPassword({ email, password });
+        if (error) throw error;
       },
 
       async logout() {
         const client = supabase;
-
-        if (mode === 'supabase' && client) {
-          await client.auth.signOut();
-        }
-
+        if (mode === 'supabase' && client) await client.auth.signOut();
         localStorage.removeItem('cronos-user');
         setUser(null);
       },
@@ -225,19 +265,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [user, loading],
   );
 
-  return (
-    <AuthContext.Provider value={value}>
-      {children}
-    </AuthContext.Provider>
-  );
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }
 
 export function useAuth() {
   const context = useContext(AuthContext);
-
-  if (!context) {
-    throw new Error('useAuth fora do provider');
-  }
-
+  if (!context) throw new Error('useAuth fora do provider');
   return context;
 }
