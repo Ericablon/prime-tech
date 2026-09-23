@@ -40,8 +40,11 @@ export async function createPilotClient(page: Page, suffix = 'E2E') {
 export async function createPilotEquipment(page: Page, clientName: string, suffix = 'E2E') {
   const serial = `CRONOS-${suffix}`.toUpperCase();
 
-  await page.goto('/equipamentos');
+  // Usa a navegação SPA real do Cronos para preservar o mesmo contexto da operação.
+  await page.getByRole('link', { name: 'Equipamentos' }).click();
+  await expect(page).toHaveURL(/\/equipamentos$/);
   await page.getByRole('button', { name: 'Novo equipamento' }).click();
+  await expect(page.getByLabel('Cliente proprietário')).toContainText(clientName);
   await page.getByLabel('Cliente proprietário').selectOption({ label: clientName });
   await page.getByLabel('Categoria').selectOption('Notebook');
   await page.getByLabel('Marca').fill('Lenovo');
