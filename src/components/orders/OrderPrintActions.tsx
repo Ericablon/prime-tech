@@ -6,6 +6,13 @@ import type { Client, CompanySettings, Equipment, ServiceOrder } from '../../typ
 import { PrintableReport } from '../reports/PrintableReport';
 
 type PrintMode = 'order' | 'quote' | null;
+type OrderEquipmentSnapshot = ServiceOrder & {
+  equipment_description?: string | null;
+  equipment_serial_number?: string | null;
+  equipment_accessories?: string | null;
+  equipment_notes?: string | null;
+};
+type EquipmentWithSnapshotFlag = Equipment & { is_order_snapshot?: boolean };
 
 type Props = {
   order: ServiceOrder;
@@ -53,6 +60,8 @@ function sectionTitle(title: string) {
 
 export function OrderPrintActions({ order, client, equipment, company, generatedBy }: Props) {
   const [mode, setMode] = useState<PrintMode>(null);
+  const snapshot = order as OrderEquipmentSnapshot;
+  const equipmentMeta = equipment as EquipmentWithSnapshotFlag | undefined;
   const items = order.items ?? [];
   const totalServices = useMemo(
     () => items.filter((item) => item.kind === 'service').reduce((sum, item) => sum + Number(item.quantity) * Number(item.unit_price), 0),
@@ -63,7 +72,11 @@ export function OrderPrintActions({ order, client, equipment, company, generated
     [items],
   );
   const total = totalServices + totalParts || Number(order.total_amount ?? order.quote_total ?? 0);
-  const equipmentLabel = [equipment?.category, equipment?.brand, equipment?.model].filter(Boolean).join(' ') || order.equipment || 'Equipamento';
+  const equipmentLabel = snapshot.equipment_description?.trim() || [equipment?.category, equipment?.brand, equipment?.model].filter(Boolean).join(' ') || order.equipment || 'Equipamento';
+  const equipmentSerial = snapshot.equipment_serial_number || equipment?.serial_number || null;
+  const equipmentAccessories = snapshot.equipment_accessories || equipment?.accessories || null;
+  const equipmentNotes = snapshot.equipment_notes || equipment?.notes || null;
+  const equipmentRecord = equipmentMeta?.is_order_snapshot ? 'Registro desta OS' : equipmentCode(equipment?.technical_number);
   const validity = Math.max(Number(company.budget_validity_days ?? 7), 1);
 
   return (
@@ -101,11 +114,11 @@ export function OrderPrintActions({ order, client, equipment, company, generated
 
         {sectionTitle('Equipamento recebido')}
         <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '0 20px' }}>
-          {line('Código', equipmentCode(equipment?.technical_number))}
+          {line('Registro', equipmentRecord)}
           {line('Equipamento', equipmentLabel)}
-          {line('Número de série', equipment?.serial_number)}
-          {line('Acessórios recebidos', equipment?.accessories)}
-          {line('Estado físico / observações', equipment?.notes)}
+          {line('Número de série', equipmentSerial)}
+          {line('Acessórios recebidos', equipmentAccessories)}
+          {line('Estado físico / observações', equipmentNotes)}
           {line('Tipo de entrada', order.intake_type)}
         </div>
 
@@ -153,7 +166,7 @@ export function OrderPrintActions({ order, client, equipment, company, generated
           <strong>{client?.name ?? order.client_name ?? 'Cliente'}</strong>
           <div>{client?.document ? `CPF/CNPJ: ${client.document}` : ''}</div>
           <div>{client?.phone ? `Contato: ${client.phone}` : ''}</div>
-          <div style={{ marginTop: 5 }}><strong>Equipamento:</strong> {equipmentLabel}{equipment?.serial_number ? ` · Série ${equipment.serial_number}` : ''}</div>
+          <div style={{ marginTop: 5 }}><strong>Equipamento:</strong> {equipmentLabel}{equipmentSerial ? ` · Série ${equipmentSerial}` : ''}</div>
         </div>
 
         {sectionTitle('Diagnóstico / necessidade')}
