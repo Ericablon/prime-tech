@@ -13,11 +13,11 @@ test.describe('CRONOS · fluxo operacional principal', () => {
     await loginAsGestor(page);
 
     await expect(page.getByText('CRONOS', { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole('link', { name: /Ordens de Serviço/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Comercial/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Operação Técnica/i })).toBeVisible();
-    await expect(page.getByRole('link', { name: /Estoque/i }).first()).toBeVisible();
-    await expect(page.getByRole('link', { name: /Financeiro/i }).first()).toBeVisible();
+    await expect(page.getByRole('link', { name: 'Dashboard' })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Comercial/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Operação Técnica/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Estoque/i })).toBeVisible();
+    await expect(page.getByRole('button', { name: /Financeiro/i })).toBeVisible();
   });
 
   test('cria cliente, equipamento e uma nova OS com dados de teste', async ({ page }) => {
@@ -31,7 +31,9 @@ test.describe('CRONOS · fluxo operacional principal', () => {
 
     const equipmentSelect = page.getByLabel('Equipamento');
     await expect(equipmentSelect).toContainText('ThinkPad E2E');
-    await equipmentSelect.selectOption({ label: /ThinkPad E2E/ });
+    const equipmentValue = await equipmentSelect.locator('option').filter({ hasText: 'ThinkPad E2E' }).getAttribute('value');
+    expect(equipmentValue).toBeTruthy();
+    await equipmentSelect.selectOption(equipmentValue!);
 
     const specialty = page.getByLabel('Especialidade técnica');
     await expect(specialty).not.toHaveValue('');
