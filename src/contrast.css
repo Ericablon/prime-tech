@@ -1,0 +1,227 @@
+/* Cronos — reforço de contraste e hierarquia tipográfica
+   Carregado por último para preservar a arquitetura visual e melhorar leitura. */
+
+:root {
+  --cronos-text-strong: #f7faff;
+  --cronos-text-body: #d4dfec;
+  --cronos-text-muted: #a4b5ca;
+  --cronos-text-soft: #879bb4;
+}
+
+/* Tema escuro: evita textos cinza excessivamente apagados. */
+.premium-content,
+.premium-sidebar,
+.premium-topbar {
+  color: var(--cronos-text-body);
+}
+
+.premium-content h1,
+.premium-content h2,
+.premium-content h3,
+.premium-content strong,
+.premium-sidebar strong,
+.premium-topbar strong {
+  color: var(--cronos-text-strong);
+}
+
+.premium-content p,
+.premium-content small,
+.premium-content .muted,
+.premium-content .alert p,
+.premium-content .notice p,
+.premium-sidebar .brand-copy small,
+.premium-sidebar .sidebar-foot-copy span,
+.premium-topbar .topbar-context span,
+.premium-topbar .profile-trigger-copy small {
+  color: var(--cronos-text-muted) !important;
+}
+
+.premium-nav .nav-link,
+.premium-nav .nav-group-button {
+  color: #c0cee0 !important;
+  font-weight: 720 !important;
+}
+
+.premium-nav .nav-child {
+  color: #a8bbd2 !important;
+  font-weight: 620 !important;
+}
+
+.nav-section-title {
+  color: #8fa7c3 !important;
+  font-weight: 900 !important;
+  letter-spacing: .15em !important;
+}
+
+.premium-content .eyebrow {
+  color: #79b6ff !important;
+  font-weight: 950 !important;
+}
+
+.premium-content th {
+  color: #a0b4cb !important;
+  font-weight: 800 !important;
+}
+
+.premium-content td {
+  color: #d5dfeb !important;
+}
+
+.form-grid label > span,
+.panel label > span {
+  color: #bfd0e3 !important;
+  font-weight: 750 !important;
+}
+
+/* ==========================================================
+   TEMA CLARO — contraste reforçado
+   ========================================================== */
+html[data-theme='light'] {
+  --muted: #53657c;
+  --premium-muted: #53657c;
+  --cronos-text-strong: #0c1b2e;
+  --cronos-text-body: #263b54;
+  --cronos-text-muted: #53677f;
+  --cronos-text-soft: #6c7f96;
+}
+
+html[data-theme='light'] body {
+  color: #172b43 !important;
+}
+
+html[data-theme='light'] .premium-content,
+html[data-theme='light'] .premium-sidebar,
+html[data-theme='light'] .premium-topbar {
+  color: #263b54 !important;
+}
+
+html[data-theme='light'] .premium-content h1,
+html[data-theme='light'] .premium-content h2,
+html[data-theme='light'] .premium-content h3,
+html[data-theme='light'] .premium-content strong,
+html[data-theme='light'] .premium-sidebar strong,
+html[data-theme='light'] .premium-topbar strong,
+html[data-theme='light'] .brand-copy strong,
+html[data-theme='light'] .topbar-context strong {
+  color: #0c1b2e !important;
+  font-weight: 800;
+}
+
+html[data-theme='light'] .premium-content p,
+html[data-theme='light'] .premium-content small,
+html[data-theme='light'] .premium-content .muted,
+html[data-theme='light'] .premium-content .alert p,
+html[data-theme='light'] .premium-content .notice p,
+html[data-theme='light'] .work-card p,
+html[data-theme='light'] .commercial-card p,
+html[data-theme='light'] .sidebar-foot-copy span,
+html[data-theme='light'] .brand-copy small,
+html[data-theme='light'] .topbar-context span,
+html[data-theme='light'] .profile-trigger-copy small {
+  color: #53677f !important;
+  opacity: 1 !important;
+}
+
+html[data-theme='light'] .premium-nav .nav-link,
+html[data-theme='light'] .premium-nav .nav-group-button,
+html[data-theme='light'] .nav-link,
+html[data-theme='light'] .nav-group-button {
+  color: #344d69 !important;
+  font-weight: 760 !important;
+}
+
+html[data-theme='light'] .premium-nav .nav-child,
+html[data-theme='light'] .nav-child {
+  color: #516981 !important;
+  font-weight: 650 !important;
+}
+
+html[data-theme='light'] .premium-nav .nav-link:hover,
+html[data-theme='light'] .premium-nav .nav-group-button:hover,
+html[data-theme='light'] .nav-child:hover {
+  color: #10243c !important;
+}
+
+html[data-theme='light'] .premium-nav .nav-link.active,
+html[data-theme='light'] .premium-nav .nav-child.active {
+  color: #0759b6 !important;
+  font-weight: 850 !important;
+}
+
+html[data-theme='light'] .nav-section-title {
+  color: #5d7087 !important;
+  font-weight: 950 !important;
+  letter-spacing: .14em !important;
+}
+
+html[data-theme='light'] .premium-content .eyebrow {
+  color: #176ed6 !important;
+  font-weight: 950 !important;
+}
+
+html[data-theme='light'] .premium-content .page-header p,
+html[data-theme='light'] .premium-content .detail-head p {
+  color: #53677f !important;
+}
+
+html[data-theme='light'] .premium-content th {
+  color: #4f6278 !important;
+  font-weight: 850 !important;
+}
+
+html[data-theme='light'] .premium-content td {
+  color: #263c56 !important;
+  font-weight: 520;
+}
+
+html[data-theme='light'] .form-grid label > span,
+html[data-theme='light'] .panel label > span {
+  color: #40566f !important;
+  font-weight: 760 !important;
+}
+
+html[data-theme='light'] input,
+html[data-theme='light'] select,
+html[data-theme='light'] textarea {
+  color: #172b43 !important;
+  font-weight: 560;
+}
+
+html[data-theme='light'] input::placeholder,
+html[data-theme='light'] textarea::placeholder,
+html[data-theme='light'] .premium-search input::placeholder,
+html[data-theme='light'] .search input::placeholder {
+  color: #72839a !important;
+  opacity: 1 !important;
+}
+
+html[data-theme='light'] .premium-search,
+html[data-theme='light'] .search {
+  color: #405873 !important;
+}
+
+html[data-theme='light'] .alert,
+html[data-theme='light'] .notice,
+html[data-theme='light'] .mini-kpis div {
+  color: #243a55 !important;
+}
+
+html[data-theme='light'] .alert strong,
+html[data-theme='light'] .notice strong,
+html[data-theme='light'] .mini-kpis strong,
+html[data-theme='light'] .tech-demand-card strong {
+  color: #10243b !important;
+  font-weight: 820 !important;
+}
+
+html[data-theme='light'] .metric strong,
+html[data-theme='light'] .metric-card strong {
+  color: #0c1d32 !important;
+  font-weight: 850 !important;
+}
+
+html[data-theme='light'] .ghost-button,
+html[data-theme='light'] .quick-actions button:not(.primary-button) {
+  color: #334d69 !important;
+  font-weight: 720 !important;
+}
