@@ -22,7 +22,12 @@ test.describe('CRONOS · fluxo operacional principal', () => {
     // Continua pelo menu do próprio sistema, como acontece na loja.
     await page.getByRole('link', { name: 'Nova Ordem de Serviço' }).click();
     await expect(page).toHaveURL(/\/ordens\/nova$/);
-    await page.getByLabel('Cliente').selectOption({ label: client.name });
+
+    const orderClientSelect = page.getByLabel('Cliente');
+    await expect(orderClientSelect).toContainText(client.name);
+    const orderClientValue = await orderClientSelect.locator('option').filter({ hasText: client.name }).getAttribute('value');
+    expect(orderClientValue).toBeTruthy();
+    await orderClientSelect.selectOption(orderClientValue!);
 
     const equipmentSelect = page.getByLabel('Equipamento');
     await expect(equipmentSelect).toContainText('ThinkPad E2E');
