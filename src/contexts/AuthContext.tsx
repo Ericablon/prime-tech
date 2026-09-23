@@ -43,6 +43,16 @@ const names: Record<RoleCode, string> = {
   fiscal: 'Fiscal Prime Tech',
 };
 
+function clearSessionDrafts() {
+  try {
+    const keys = Array.from({ length: sessionStorage.length }, (_, index) => sessionStorage.key(index))
+      .filter((key): key is string => Boolean(key) && key!.startsWith('cronos:draft:'));
+    keys.forEach((key) => sessionStorage.removeItem(key));
+  } catch {
+    // A sessão pode bloquear storage; o logout continua normalmente.
+  }
+}
+
 async function loadPermissions(
   client: NonNullable<typeof supabase>,
   companyId: string,
@@ -258,6 +268,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async logout() {
         const client = supabase;
         if (mode === 'supabase' && client) await client.auth.signOut();
+        clearSessionDrafts();
         localStorage.removeItem('cronos-user');
         setUser(null);
       },
