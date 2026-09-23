@@ -78,6 +78,9 @@ export function UsersPage() {
   const [success, setSuccess] = useState('');
   const [invite, setInvite, clearInvite] = useSessionDraft<InviteDraft>('admin-user-invite', emptyInvite);
   const [editing, setEditing] = useState<EditDraft | null>(null);
+  const [passwordTarget, setPasswordTarget] = useState<UserRow | null>(null);
+  const [managerPassword, setManagerPassword] = useState('');
+  const [managerPasswordConfirm, setManagerPasswordConfirm] = useState('');
 
   const load = useCallback(async () => {
     if (mode !== 'supabase' || !supabase || !companyId) {
@@ -227,6 +230,7 @@ export function UsersPage() {
   }
 
   function openEdit(row: UserRow) {
+    setPasswordTarget(null);
     setEditing({
       userId: row.userId,
       fullName: row.fullName,
@@ -265,6 +269,56 @@ export function UsersPage() {
     } finally { setBusy(false); }
   }
 
+  function openPassword(row: UserRow) {
+    if (row.userId === user?.id) {
+      setError('Para alterar sua própria senha, use o menu do seu perfil no topo do Cronos.');
+      return;
+    }
+    if (row.roleCode === 'admin' && user?.role_code !== 'admin') {
+      setError('Somente um administrador pode definir diretamente a senha de outro administrador.');
+      return;
+    }
+    setEditing(null);
+    setPasswordTarget(row);
+    setManagerPassword('');
+    setManagerPasswordConfirm('');
+    setError('');
+    setSuccess('');
+  }
+
+  function closePassword() {
+    setPasswordTarget(null);
+    setManagerPassword('');
+    setManagerPasswordConfirm('');
+  }
+
+  async function setUserPassword(event: FormEvent) {
+    event.preventDefault();
+    if (!passwordTarget) return;
+    if (managerPassword.length < 8) {
+      setError('A nova senha deve ter pelo menos 8 caracteres.');
+      return;
+    }
+    if (managerPassword !== managerPasswordConfirm) {
+      setError('A confirmação da senha não confere.');
+      return;
+    }
+
+    setBusy(true); setError(''); setSuccess('');
+    try {
+      const result = await invoke({
+        action: 'set_password',
+        userId: passwordTarget.userId,
+        password: managerPassword,
+      });
+      const name = passwordTarget.fullName;
+      closePassword();
+      setSuccess(result?.message ?? `Senha de ${name} atualizada.`);
+    } catch (cause) {
+      setError(cause instanceof Error ? cause.message : 'Não foi possível definir a nova senha.');
+    } finally { setBusy(false); }
+  }
+
   async function resetPassword(row: UserRow) {
     if (!row.email) {
       setError('Este usuário ainda não possui e-mail disponível no perfil.');
@@ -284,7 +338,7 @@ export function UsersPage() {
     <PageHeader
       eyebrow="Administração"
       title="Usuários e acessos"
-      description="Crie, edite, ative ou desative usuários e associe cada pessoa a um perfil de acesso."
+      description="Crie, edite, ative ou desative usuários, associe perfis e gerencie credenciais de acesso."
       actions={<button type="button" className="ghost-button" onClick={() => void load()} disabled={loading}><RefreshCw size={16} /> Atualizar</button>}
     />
 
@@ -307,11 +361,28 @@ export function UsersPage() {
             <label><span>Nome completo</span><input value={editing.fullName} onChange={(event) => setEditing((value) => value ? { ...value, fullName: event.target.value } : value)} /></label>
             <label><span>E-mail</span><input value={editing.email} disabled /></label>
             <label><span>Perfil personalizado</span><select value={editing.accessProfileId} onChange={(event) => applyProfile(event.target.value, 'edit')}><option value="">Usar perfil padrão</option>{profiles.filter((profile) => profile.active).map((profile) => <option key={profile.id} value={profile.id}>{profile.name} · base {roleLabels[profile.base_role_code]}</option>)}</select></label>
-            {!editing.accessProfileId && <label><span>Perfil padrão</span><select value={editing.roleCode} onChange={(event) => setEditing((value) => value ? { ...value, roleCode: event.target.value as RoleCode } : value)}>{selectableRoles.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}</select></label>}
+            {!editing.accessProfileId && <label><span>Perfil padrão</span><select value={editing.roleCode} disabled={editing.userId === user?.id} onChange={(event) => setEditing((value) => value ? { ...value, roleCode: event.target.value as RoleCode } : value)}>{selectableRoles.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}</select></label>}
             <label className="ghost-button" style={{ alignSelf: 'end', justifyContent: 'flex-start' }}><input type="checkbox" checked={editing.active} disabled={editing.userId === user?.id} onChange={(event) => setEditing((value) => value ? { ...value, active: event.target.checked } : value)} /> Acesso ativo</label>
           </div>
           {editing.userId === user?.id && <div className="notice" style={{ marginBottom: 0 }}><ShieldCheck size={18} /><div><strong>Seu próprio acesso está protegido</strong><p>Você pode alterar seu nome, mas não pode trocar o próprio perfil ou desativar sua conta por esta tela.</p></div></div>}
           <div className="quick-actions"><button type="submit" className="primary-button" disabled={busy}><Save size={16} /> {busy ? 'Salvando...' : 'Salvar usuário'}</button></div>
+        </form>
+      </section>
+    )}
+
+    {passwordTarget && (
+      <section className="panel" style={{ marginBottom: 20 }}>
+        <div className="panel-head">
+          <div><span className="eyebrow">Credencial interna</span><h2>Definir senha de {passwordTarget.fullName}</h2><p className="muted">{passwordTarget.email || 'Usuário sem e-mail exibido'}</p></div>
+          <button type="button" className="ghost-button" onClick={closePassword}><X size={15} /> Fechar</button>
+        </div>
+        <form onSubmit={(event) => void setUserPassword(event)} style={{ display: 'grid', gap: 14 }}>
+          <div className="form-grid">
+            <label><span>Nova senha</span><input type="password" minLength={8} autoComplete="new-password" value={managerPassword} onChange={(event) => setManagerPassword(event.target.value)} required /></label>
+            <label><span>Confirmar nova senha</span><input type="password" minLength={8} autoComplete="new-password" value={managerPasswordConfirm} onChange={(event) => setManagerPasswordConfirm(event.target.value)} required /></label>
+          </div>
+          <div className="notice" style={{ marginBottom: 0 }}><KeyRound size={18} /><div><strong>Senha definida pelo gestor</strong><p>Informe a nova senha ao usuário por um canal seguro. O Cronos nunca exibe a senha atual.</p></div></div>
+          <div className="quick-actions"><button type="submit" className="primary-button" disabled={busy || managerPassword.length < 8 || managerPassword !== managerPasswordConfirm}><Save size={16} /> {busy ? 'Alterando...' : 'Definir nova senha'}</button><button type="button" className="ghost-button" onClick={closePassword}>Cancelar</button></div>
         </form>
       </section>
     )}
@@ -325,7 +396,7 @@ export function UsersPage() {
           <label><span>Perfil personalizado</span><select value={invite.accessProfileId ?? ''} onChange={(event) => applyProfile(event.target.value, 'invite')}><option value="">Usar perfil padrão</option>{profiles.filter((profile) => profile.active).map((profile) => <option key={profile.id} value={profile.id}>{profile.name} · base {roleLabels[profile.base_role_code]}</option>)}</select></label>
           {!invite.accessProfileId && <label><span>Perfil padrão</span><select value={invite.roleCode} onChange={(e) => setInvite((v) => ({ ...v, roleCode: e.target.value as RoleCode }))}>{selectableRoles.map((role) => <option key={role} value={role}>{roleLabels[role]}</option>)}</select></label>}
         </div>
-        <div className="notice" style={{ marginBottom: 0 }}><ShieldCheck size={18} /><div><strong>Sem senha compartilhada</strong><p>O usuário recebe o convite por e-mail e cria a própria senha na tela segura do Cronos.</p></div></div>
+        <div className="notice" style={{ marginBottom: 0 }}><ShieldCheck size={18} /><div><strong>Sem senha compartilhada no convite</strong><p>O fluxo de convite por e-mail continua disponível; a definição direta de senha é uma opção administrativa separada.</p></div></div>
         <div className="quick-actions"><button type="submit" disabled={busy}><UserPlus size={16} /> {busy ? 'Enviando...' : 'Criar usuário e enviar convite'}</button></div>
       </form>
     </section>
@@ -340,7 +411,11 @@ export function UsersPage() {
           <td><strong>{row.accessProfileName ?? roleLabels[row.roleCode] ?? row.roleCode}</strong><small>{row.accessProfileName ? 'Personalizado' : 'Padrão'}</small></td>
           <td>{roleLabels[row.roleCode] ?? row.roleCode}</td>
           <td><span className={`stock-state ${row.active ? 'ok' : 'critical'}`}>{row.active ? 'Ativo' : 'Inativo'}</span></td>
-          <td><div className="quick-actions"><button type="button" className="ghost-button" disabled={busy} onClick={() => openEdit(row)}><Edit3 size={15} /> Editar</button><button type="button" className="ghost-button" disabled={busy || !row.email} onClick={() => void resetPassword(row)}><KeyRound size={15} /> Redefinir senha</button></div></td>
+          <td><div className="quick-actions">
+            <button type="button" className="ghost-button" disabled={busy} onClick={() => openEdit(row)}><Edit3 size={15} /> Editar</button>
+            {row.userId !== user?.id && !(row.roleCode === 'admin' && user?.role_code !== 'admin') && <button type="button" className="ghost-button" disabled={busy} onClick={() => openPassword(row)}><KeyRound size={15} /> Definir senha</button>}
+            <button type="button" className="ghost-button" disabled={busy || !row.email} onClick={() => void resetPassword(row)}><MailPlus size={15} /> Enviar recuperação</button>
+          </div></td>
         </tr>)}</tbody>
       </table></div>}
     </section>
