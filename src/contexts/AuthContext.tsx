@@ -14,10 +14,24 @@ import type {
   UserProfile,
 } from '../types/domain';
 
+export interface UserAccessOption {
+  key: string;
+  company_id: string;
+  company_name: string;
+  organization_id?: string;
+  branch_id?: string;
+  branch_name?: string;
+  role_code: RoleCode;
+  access_profile_id?: string | null;
+}
+
 interface AuthValue {
   user: UserProfile | null;
   loading: boolean;
   mode: 'demo' | 'supabase';
+  accesses: UserAccessOption[];
+  activeAccessKey: string | null;
+  switchAccess: (accessKey: string) => Promise<void>;
   loginDemo: (role: RoleCode) => void;
   loginWithPassword: (email: string, password: string) => Promise<void>;
   logout: () => Promise<void>;
@@ -49,8 +63,12 @@ function clearSessionDrafts() {
       .filter((key): key is string => Boolean(key) && key!.startsWith('cronos:draft:'));
     keys.forEach((key) => sessionStorage.removeItem(key));
   } catch {
-    // A sessão pode bloquear storage; o logout continua normalmente.
+    // Storage pode estar indisponível; a sessão continua funcionando.
   }
+}
+
+function accessStorageKey(userId: string) {
+  return `cronos-active-access:${userId}`;
 }
 
 async function loadPermissions(
@@ -107,13 +125,103 @@ async function loadPermissions(
   );
 }
 
+async function loadAccessOptions(
+  client: NonNullable<typeof supabase>,
+  userId: string,
+): Promise<UserAccessOption[]> {
+  type AccessRow = {
+    company_id: string;
+    branch_id?: string | null;
+    role_code: string;
+    access_profile_id?: string | null;
+  };
+
+  let rows: AccessRow[] = [];
+  const modern = await client
+    .from('user_company_access')
+    .select('company_id,branch_id,role_code,access_profile_id')
+    .eq('user_id', userId)
+    .eq('active', true)
+    .order('company_id');
+
+  if (!modern.error) {
+    rows = (modern.data ?? []) as AccessRow[];
+  } else {
+    const legacy = await client
+      .from('user_company_access')
+      .select('company_id,branch_id,role_code')
+      .eq('user_id', userId)
+      .eq('active', true)
+      .order('company_id');
+    if (legacy.error) throw legacy.error;
+    rows = (legacy.data ?? []) as AccessRow[];
+  }
+
+  if (!rows.length) return [];
+
+  const companyIds = [...new Set(rows.map((row) => String(row.company_id)))];
+  const branchIds = [...new Set(rows.map((row) => row.branch_id ? String(row.branch_id) : '').filter(Boolean))];
+
+  const [companyResult, branchResult] = await Promise.all([
+    client.from('companies').select('id,trade_name,legal_name,organization_id').in('id', companyIds),
+    branchIds.length
+      ? client.from('branches').select('id,name,company_id').in('id', branchIds)
+      : Promise.resolve({ data: [], error: null }),
+  ]);
+
+  if (companyResult.error) throw companyResult.error;
+  if (branchResult.error) throw branchResult.error;
+
+  const companyById = new Map((companyResult.data ?? []).map((company) => [String(company.id), company]));
+  const branchById = new Map((branchResult.data ?? []).map((branch) => [String(branch.id), branch]));
+
+  return rows.map((row) => {
+    const companyId = String(row.company_id);
+    const branchId = row.branch_id ? String(row.branch_id) : undefined;
+    const company = companyById.get(companyId);
+    const branch = branchId ? branchById.get(branchId) : undefined;
+    return {
+      key: `${companyId}:${branchId ?? ''}`,
+      company_id: companyId,
+      company_name: String(company?.trade_name ?? company?.legal_name ?? 'Empresa'),
+      organization_id: company?.organization_id ? String(company.organization_id) : undefined,
+      branch_id: branchId,
+      branch_name: branch?.name ? String(branch.name) : undefined,
+      role_code: String(row.role_code) as RoleCode,
+      access_profile_id: row.access_profile_id ? String(row.access_profile_id) : null,
+    };
+  });
+}
+
+async function resolveProfileForAccess(
+  client: NonNullable<typeof supabase>,
+  profile: UserProfile,
+  access: UserAccessOption,
+): Promise<UserProfile> {
+  const permissions = await loadPermissions(
+    client,
+    access.company_id,
+    access.role_code,
+    access.access_profile_id,
+  );
+
+  return {
+    ...profile,
+    role_code: access.role_code,
+    company_id: access.company_id,
+    branch_id: access.branch_id,
+    organization_id: access.organization_id,
+    permissions,
+  };
+}
+
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<UserProfile | null>(() => {
     if (mode !== 'demo') return null;
     const raw = localStorage.getItem('cronos-user');
     return raw ? (JSON.parse(raw) as UserProfile) : null;
   });
-
+  const [accesses, setAccesses] = useState<UserAccessOption[]>([]);
   const [loading, setLoading] = useState(mode === 'supabase');
 
   useEffect(() => {
@@ -134,6 +242,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (!authUser) {
           if (alive) {
             setUser(null);
+            setAccesses([]);
             setLoading(false);
           }
           return;
@@ -146,77 +255,24 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           .single();
         if (profileError) throw profileError;
 
-        let resolved = profile as UserProfile;
+        const baseProfile = profile as UserProfile;
+        let resolved = baseProfile;
+        let options: UserAccessOption[] = [];
 
         try {
-          let access: {
-            company_id?: string | null;
-            branch_id?: string | null;
-            role_code?: string | null;
-            access_profile_id?: string | null;
-          } | null = null;
-
-          const modernAccess = await client
-            .from('user_company_access')
-            .select('company_id, branch_id, role_code, access_profile_id')
-            .eq('user_id', authUser.id)
-            .eq('active', true)
-            .order('company_id')
-            .limit(1)
-            .maybeSingle();
-
-          if (!modernAccess.error) {
-            access = modernAccess.data;
-          } else {
-            const legacyAccess = await client
-              .from('user_company_access')
-              .select('company_id, branch_id, role_code')
-              .eq('user_id', authUser.id)
-              .eq('active', true)
-              .order('company_id')
-              .limit(1)
-              .maybeSingle();
-            if (legacyAccess.error) throw legacyAccess.error;
-            access = legacyAccess.data;
-          }
-
-          if (access?.company_id && access?.role_code) {
-            const roleCode = access.role_code as RoleCode;
-            const companyId = String(access.company_id);
-
-            const [permissions, companyResult] = await Promise.all([
-              loadPermissions(
-                client,
-                companyId,
-                roleCode,
-                access.access_profile_id ? String(access.access_profile_id) : null,
-              ),
-              client
-                .from('companies')
-                .select('organization_id')
-                .eq('id', companyId)
-                .maybeSingle(),
-            ]);
-
-            resolved = {
-              ...resolved,
-              role_code: roleCode,
-              company_id: companyId,
-              branch_id: access.branch_id ? String(access.branch_id) : undefined,
-              organization_id: companyResult.data?.organization_id
-                ? String(companyResult.data.organization_id)
-                : undefined,
-              permissions,
-            };
+          options = await loadAccessOptions(client, authUser.id);
+          if (options.length) {
+            const savedKey = localStorage.getItem(accessStorageKey(authUser.id));
+            const selected = options.find((option) => option.key === savedKey) ?? options[0];
+            resolved = await resolveProfileForAccess(client, baseProfile, selected);
+            localStorage.setItem(accessStorageKey(authUser.id), selected.key);
           }
         } catch (tenantError) {
-          console.warn(
-            'Sessão carregada em modo de compatibilidade sem contexto tenant:',
-            tenantError,
-          );
+          console.warn('Sessão carregada em modo de compatibilidade sem contexto tenant:', tenantError);
         }
 
         if (alive) {
+          setAccesses(options);
           setUser(resolved);
           setLoading(false);
         }
@@ -224,6 +280,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         console.error('Erro ao carregar usuário:', error);
         if (alive) {
           setUser(null);
+          setAccesses([]);
           setLoading(false);
         }
       }
@@ -241,11 +298,34 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     };
   }, []);
 
+  const activeAccessKey = useMemo(() => {
+    if (!user?.company_id) return null;
+    return `${user.company_id}:${user.branch_id ?? ''}`;
+  }, [user?.branch_id, user?.company_id]);
+
   const value = useMemo<AuthValue>(
     () => ({
       user,
       loading,
       mode,
+      accesses,
+      activeAccessKey,
+
+      async switchAccess(accessKey) {
+        if (mode !== 'supabase' || !supabase || !user) return;
+        const selected = accesses.find((option) => option.key === accessKey);
+        if (!selected || selected.key === activeAccessKey) return;
+
+        setLoading(true);
+        try {
+          const resolved = await resolveProfileForAccess(supabase, user, selected);
+          clearSessionDrafts();
+          localStorage.setItem(accessStorageKey(user.id), selected.key);
+          setUser(resolved);
+        } finally {
+          setLoading(false);
+        }
+      },
 
       loginDemo(role) {
         const next: UserProfile = {
@@ -255,6 +335,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           active: true,
         };
         localStorage.setItem('cronos-user', JSON.stringify(next));
+        setAccesses([]);
         setUser(next);
       },
 
@@ -270,10 +351,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         if (mode === 'supabase' && client) await client.auth.signOut();
         clearSessionDrafts();
         localStorage.removeItem('cronos-user');
+        if (user?.id) localStorage.removeItem(accessStorageKey(user.id));
+        setAccesses([]);
         setUser(null);
       },
     }),
-    [user, loading],
+    [accesses, activeAccessKey, loading, user],
   );
 
   return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
