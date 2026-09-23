@@ -53,6 +53,33 @@ begin
   end if;
 end $$;
 
+-- A interface esconde a edição sem a permissão, mas a proteção também precisa
+-- existir no banco para impedir atualização direta via API.
+create or replace function public.enforce_schedule_permission()
+returns trigger
+language plpgsql
+security invoker
+set search_path = public, private
+as $$
+begin
+  if (
+    new.scheduled_at is distinct from old.scheduled_at
+    or new.scheduled_duration_minutes is distinct from old.scheduled_duration_minutes
+    or new.schedule_notes is distinct from old.schedule_notes
+    or new.assigned_technician_id is distinct from old.assigned_technician_id
+  ) and not private.has_company_permission(new.company_id, 'schedule.manage') then
+    raise exception 'Usuário sem permissão para alterar a programação técnica';
+  end if;
+
+  return new;
+end;
+$$;
+
+drop trigger if exists enforce_schedule_permission on public.service_orders;
+create trigger enforce_schedule_permission
+before update on public.service_orders
+for each row execute function public.enforce_schedule_permission();
+
 -- ============================================================================
 -- 2) ESTADO DE LEITURA DAS NOTIFICAÇÕES POR USUÁRIO / EMPRESA
 -- ============================================================================
