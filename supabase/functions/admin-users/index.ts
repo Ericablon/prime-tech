@@ -9,7 +9,7 @@ const corsHeaders = {
 type RoleCode = 'admin' | 'gestor' | 'atendimento' | 'comercial' | 'tecnico' | 'estoque' | 'financeiro' | 'fiscal';
 
 type RequestBody = {
-  action: 'invite' | 'reset' | 'update';
+  action: 'invite' | 'reset' | 'update' | 'set_password';
   companyId: string;
   email?: string;
   userId?: string;
@@ -18,6 +18,7 @@ type RequestBody = {
   accessProfileId?: string | null;
   active?: boolean;
   redirectTo?: string;
+  password?: string;
 };
 
 function json(payload: unknown, status = 200) {
@@ -148,6 +149,30 @@ Deno.serve(async (req) => {
       const baseRole = String(profile.base_role_code) as RoleCode;
       if (!allowedRoles.includes(baseRole)) throw new Error('Tipo operacional do perfil é inválido.');
       return { roleCode: baseRole, accessProfileId: String(profile.id) };
+    }
+
+    if (body.action === 'set_password') {
+      const password = body.password ?? '';
+      if (!body.userId) return json({ error: 'Usuário obrigatório.' }, 400);
+      if (body.userId === authData.user.id) {
+        return json({ error: 'Use a opção Alterar minha senha para mudar sua própria senha.' }, 409);
+      }
+      if (password.length < 8) return json({ error: 'A nova senha deve ter pelo menos 8 caracteres.' }, 400);
+
+      const { data: targetAccess, error: targetAccessError } = await admin
+        .from('user_company_access')
+        .select('user_id')
+        .eq('user_id', body.userId)
+        .eq('company_id', body.companyId)
+        .limit(1)
+        .maybeSingle();
+      if (targetAccessError) throw targetAccessError;
+      if (!targetAccess) return json({ error: 'Usuário não está vinculado a esta empresa.' }, 404);
+
+      const { error: passwordError } = await admin.auth.admin.updateUserById(body.userId, { password });
+      if (passwordError) throw passwordError;
+
+      return json({ ok: true, message: 'Senha do usuário atualizada com sucesso.' });
     }
 
     if (body.action === 'reset') {
