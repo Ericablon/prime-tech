@@ -75,7 +75,7 @@ export function LoginPage() {
       <div className="login-v2-glow login-v2-glow-a" aria-hidden="true" />
       <div className="login-v2-glow login-v2-glow-b" aria-hidden="true" />
       <div className="login-v2-horizon" aria-hidden="true" />
-      <img src={brandMark} alt="" className="login-v2-watermark" aria-hidden="true" />
+      <img src={brandLogo} alt="" className="login-v2-watermark" aria-hidden="true" />
 
       <button
         type="button"
@@ -108,7 +108,6 @@ export function LoginPage() {
           </div>
 
           <h1>CRONOS</h1>
-          <p>Gestão integrada para assistência técnica.</p>
         </header>
 
         {mode === 'demo' ? (
