@@ -13,6 +13,8 @@ export function ForgotPasswordPage() {
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy) return;
+
     setBusy(true);
     setError('');
     setSent(false);
@@ -78,7 +80,7 @@ export function ForgotPasswordPage() {
 
           {error && <p className="form-error login-v2-error">{error}</p>}
 
-          <button className="primary-button wide login-v2-submit" disabled={busy || !email.trim()}>
+          <button type="submit" className="primary-button wide login-v2-submit" disabled={busy || !email.trim()}>
             <span>{busy ? 'Enviando...' : 'Enviar link de recuperação'}</span>
             {!busy && <Send size={18} />}
           </button>
