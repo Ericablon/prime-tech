@@ -19,7 +19,15 @@ import { useAuth } from '../contexts/AuthContext';
 import { usePrimeTech } from '../contexts/PrimeTechContext';
 import { equipmentCode, money, orderCode } from '../lib/formatters';
 import { can } from '../lib/permissions';
-import type { PauseReason, TechnicalStatus } from '../types/domain';
+import type { Equipment, PauseReason, ServiceOrder, TechnicalStatus } from '../types/domain';
+
+type OrderEquipmentSnapshot = ServiceOrder & {
+  equipment_description?: string | null;
+  equipment_serial_number?: string | null;
+  equipment_accessories?: string | null;
+  equipment_notes?: string | null;
+};
+type EquipmentWithSnapshotFlag = Equipment & { is_order_snapshot?: boolean };
 
 const technicalLabels:Record<TechnicalStatus,string>={
   not_started:'Não iniciado',waiting_start:'Aguardando início',in_progress:'Em manutenção',paused:'Pausado',waiting_part:'Aguardando peça',quality_check:'Testes / qualidade',completed:'Concluído',
@@ -38,8 +46,14 @@ export function OrderDetailPage(){
   const order=orders.find((item)=>item.id===id);
   if(!order)return <><Link to="/ordens" className="back-link"><ArrowLeft size={17}/>Voltar</Link><section className="panel empty-state" style={{marginTop:20}}><AlertTriangle size={38}/><h3>Ordem de Serviço não encontrada</h3><p>A OS pode ter sido removida, estar fora da empresa atual ou o endereço pode estar incorreto.</p></section></>;
 
+  const snapshot=order as OrderEquipmentSnapshot;
   const client=clients.find((item)=>item.id===order.client_id);
   const equipmentItem=equipment.find((item)=>item.id===order.equipment_id);
+  const equipmentMeta=equipmentItem as EquipmentWithSnapshotFlag|undefined;
+  const equipmentDescription=snapshot.equipment_description?.trim()||[equipmentItem?.category,equipmentItem?.brand,equipmentItem?.model].filter(Boolean).join(' ')||order.equipment||'Não identificado';
+  const equipmentSerial=snapshot.equipment_serial_number||equipmentItem?.serial_number||'Não informado';
+  const equipmentAccessories=snapshot.equipment_accessories||equipmentItem?.accessories||'Nenhum informado';
+  const equipmentNotes=snapshot.equipment_notes||equipmentItem?.notes||'Nenhuma observação';
   const orderHistory=history.filter((item)=>item.service_order_id===order.id).sort((a,b)=>new Date(b.changed_at).getTime()-new Date(a.changed_at).getTime());
   const diagnosisDone=Boolean(order.diagnosis)||['ready_for_commercial','budget_ready','waiting_customer','approved','waiting_part','in_repair','quality_check','ready_for_pickup','delivered'].includes(order.status);
   const commercialDone=order.approval_status==='approved'||['approved','waiting_part','in_repair','quality_check','ready_for_pickup','delivered'].includes(order.status);
@@ -51,7 +65,7 @@ export function OrderDetailPage(){
   return <>
     <div className="detail-head">
       <Link to="/ordens" className="back-link"><ArrowLeft size={17}/>Voltar</Link>
-      <div><span className="eyebrow">Ordem de Serviço</span><h1>{orderCode(order.order_number)}</h1><p>{order.client_name??client?.name??'Cliente não identificado'} · {order.equipment??'Equipamento não identificado'}</p></div>
+      <div><span className="eyebrow">Ordem de Serviço</span><h1>{orderCode(order.order_number)}</h1><p>{order.client_name??client?.name??'Cliente não identificado'} · {equipmentDescription}</p></div>
       <div style={{display:'flex',alignItems:'center',gap:8,flexWrap:'wrap',justifyContent:'flex-end'}}><StatusBadge status={order.status}/><Link to={`/ordens/${order.id}/documentos`} className="ghost-button"><Printer size={16}/>Imprimir OS / orçamento</Link></div>
     </div>
 
@@ -95,11 +109,12 @@ export function OrderDetailPage(){
         <InfoBlock label="E-mail" value={client?.email??'Não informado'}/>
       </section>
       <section className="panel">
-        <div className="panel-head"><div><span className="eyebrow">Equipamento</span><h2>Identificação técnica</h2></div><Laptop size={20}/></div>
-        <InfoBlock label="Código" value={equipmentCode(equipmentItem?.technical_number)}/>
-        <InfoBlock label="Equipamento" value={[equipmentItem?.category,equipmentItem?.brand,equipmentItem?.model].filter(Boolean).join(' ')||order.equipment||'Não identificado'}/>
-        <InfoBlock label="Número de série" value={equipmentItem?.serial_number??'Não informado'}/>
-        <InfoBlock label="Acessórios" value={equipmentItem?.accessories??'Nenhum informado'}/>
+        <div className="panel-head"><div><span className="eyebrow">Equipamento recebido</span><h2>Registro desta OS</h2></div><Laptop size={20}/></div>
+        <InfoBlock label="Registro" value={equipmentMeta?.is_order_snapshot?'Descrição registrada na entrada':equipmentCode(equipmentItem?.technical_number)}/>
+        <InfoBlock label="Equipamento" value={equipmentDescription}/>
+        <InfoBlock label="Número de série" value={equipmentSerial}/>
+        <InfoBlock label="Acessórios recebidos" value={equipmentAccessories}/>
+        <InfoBlock label="Estado físico / observações" value={equipmentNotes}/>
       </section>
     </div>
 
