@@ -1,5 +1,6 @@
 import {
   ChevronDown,
+  KeyRound,
   LogOut,
   Menu,
   Moon,
@@ -281,6 +282,16 @@ export function AppShell({ children }: { children: ReactNode }) {
                     <div><strong>{user?.full_name || 'Usuário'}</strong><small>{user?.email || user?.role_code}</small></div>
                   </div>
                   <div className="profile-role-badge">{user?.role_code || 'perfil'}</div>
+                  <button
+                    type="button"
+                    className="profile-action"
+                    onClick={() => {
+                      setProfileOpen(false);
+                      navigate('/conta/senha');
+                    }}
+                  >
+                    <KeyRound size={17} /> Alterar minha senha
+                  </button>
                   <button type="button" className="profile-action danger" onClick={() => void logout()}><LogOut size={17} /> Sair</button>
                 </div>
               )}
