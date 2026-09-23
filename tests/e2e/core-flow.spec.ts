@@ -2,13 +2,6 @@ import { expect, test } from '@playwright/test';
 import { createPilotClient, createPilotEquipment, loginAsGestor } from './support';
 
 test.describe('CRONOS · fluxo operacional principal', () => {
-  test.beforeEach(async ({ page }) => {
-    await page.addInitScript(() => {
-      localStorage.clear();
-      sessionStorage.clear();
-    });
-  });
-
   test('gestor acessa os módulos centrais do sistema', async ({ page }) => {
     await loginAsGestor(page);
 
