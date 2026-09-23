@@ -138,6 +138,7 @@ export interface Equipment {
   serial_number?: string | null;
   accessories?: string | null;
   notes?: string | null;
+  is_order_snapshot?: boolean;
   created_by?: string | null;
   created_at: string;
   updated_at?: string;
@@ -173,6 +174,10 @@ export interface ServiceOrder {
   company_id?: string;
   client_id?: string;
   equipment_id?: string;
+  equipment_description?: string | null;
+  equipment_serial_number?: string | null;
+  equipment_accessories?: string | null;
+  equipment_notes?: string | null;
   assigned_technician_id?: string | null;
   technical_specialty_code?: TechnicalSpecialtyCode | null;
   client_name?: string;
@@ -353,6 +358,10 @@ export interface CreateEquipmentInput {
 export interface CreateOrderInput {
   client_id: string;
   equipment_id: string;
+  equipment_description?: string | null;
+  equipment_serial_number?: string | null;
+  equipment_accessories?: string | null;
+  equipment_notes?: string | null;
   intake_type: string;
   reported_issue: string;
   priority: Priority;
