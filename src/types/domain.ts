@@ -20,6 +20,7 @@ export type Permission =
   | 'orders.commercial'
   | 'orders.approve'
   | 'orders.deliver'
+  | 'schedule.manage'
   | 'stock.view'
   | 'stock.reserve'
   | 'stock.consume'
@@ -219,26 +220,24 @@ export interface StockItem {
   quantity?: number;
   reserved_quantity?: number;
   minimum_quantity?: number;
-  physical: number;
-  reserved: number;
-  minimum: number;
-  cost_price: number;
-  sale_price: number;
-  active?: boolean;
+  physical?: number;
+  reserved?: number;
+  minimum?: number;
+  cost_price?: number;
+  sale_price?: number;
   barcode?: string | null;
   ncm?: string | null;
   cest?: string | null;
-  commercial_unit?: string | null;
-  tax_origin?: string | null;
-  cfop_internal?: string | null;
-  cfop_interstate?: string | null;
-  icms_situation?: string | null;
-  pis_situation?: string | null;
-  cofins_situation?: string | null;
-  ipi_situation?: string | null;
-  ibs_cbs_situation?: string | null;
-  ibs_cbs_classification?: string | null;
-  ibs_cbs_payload?: Record<string, unknown>;
+  fiscal_unit?: string | null;
+  fiscal_tax_origin?: string | null;
+  fiscal_cfop?: string | null;
+  fiscal_icms_situation?: string | null;
+  fiscal_pis_situation?: string | null;
+  fiscal_cofins_situation?: string | null;
+  fiscal_ipi_situation?: string | null;
+  fiscal_ibs_cbs_situation?: string | null;
+  fiscal_ibs_cbs_classification?: string | null;
+  active?: boolean;
   created_at?: string;
   updated_at?: string;
 }
@@ -258,14 +257,12 @@ export interface FinancialEntry {
   payment_method?: string | null;
   installment_id?: string | null;
   created_by?: string | null;
+  created_at?: string;
 }
 
 export interface PaymentInstallment {
   id: string;
   company_id?: string;
-  plan_id: string;
-  installment_number: number;
-  installment_count: number;
   service_order_id?: string | null;
   type: 'income' | 'expense';
   category: string;
@@ -277,38 +274,24 @@ export interface PaymentInstallment {
   competence_date?: string | null;
   payment_method: string;
   paid_at?: string | null;
-}
-
-export interface PaymentPlanInput {
-  request_id: string;
-  order_id: string | null;
-  type: 'income' | 'expense';
-  category: string;
-  category_id?: string | null;
-  account_id?: string | null;
-  description: string;
-  amount: number;
-  count: number;
-  first_due: string;
-  method: string;
-  paid: boolean;
+  created_at?: string;
 }
 
 export interface OrderHistory {
   id: string;
   service_order_id: string;
-  from_status?: string | null;
-  to_status: string;
+  from_status?: OrderStatus | null;
+  to_status: OrderStatus;
   notes?: string | null;
   changed_by?: string | null;
   changed_by_name?: string | null;
   changed_at: string;
 }
 
-export interface CompanySettings extends FiscalAddressFields {
-  id: string;
+export interface CompanySettings {
+  id?: string;
   company_id?: string;
-  trade_name: string;
+  trade_name?: string;
   legal_name?: string | null;
   document?: string | null;
   state_registration?: string | null;
@@ -318,11 +301,23 @@ export interface CompanySettings extends FiscalAddressFields {
   whatsapp?: string | null;
   email?: string | null;
   address?: string | null;
+  street?: string | null;
+  address_number?: string | null;
+  address_complement?: string | null;
+  district?: string | null;
+  city?: string | null;
+  city_code?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
+  country_code?: string | null;
+  country_name?: string | null;
   instagram?: string | null;
   logo_url?: string | null;
-  budget_validity_days: number;
+  budget_validity_days?: number;
   warranty_text?: string | null;
   footer_text?: string | null;
+  created_at?: string;
+  updated_at?: string;
 }
 
 export interface CreateClientInput extends FiscalAddressFields {
@@ -365,4 +360,19 @@ export interface TechnicalUpdateInput {
   note: string;
   pause_reason?: PauseReason | null;
   estimated_days?: number | null;
+}
+
+export interface PaymentPlanInput {
+  request_id: string;
+  order_id?: string | null;
+  type: 'income' | 'expense';
+  category: string;
+  category_id?: string | null;
+  account_id?: string | null;
+  description: string;
+  amount: number;
+  count: number;
+  first_due: string;
+  method: string;
+  paid: boolean;
 }
