@@ -46,6 +46,8 @@ export function ResetPasswordPage() {
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    if (busy || success) return;
+
     setError('');
 
     if (password.length < 8) {
@@ -137,7 +139,7 @@ export function ResetPasswordPage() {
             {success && <div className="notice"><ShieldCheck size={18} /><div><strong>Senha atualizada</strong><p>Entrando no Cronos...</p></div></div>}
             {error && <p className="form-error login-v2-error">{error}</p>}
 
-            <button className="primary-button wide login-v2-submit" disabled={busy || success}>
+            <button type="submit" className="primary-button wide login-v2-submit" disabled={busy || success}>
               <span>{busy ? 'Salvando...' : 'Salvar nova senha'}</span>
               {!busy && <Save size={18} />}
             </button>
