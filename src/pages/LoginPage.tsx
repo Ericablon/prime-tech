@@ -51,6 +51,8 @@ export function LoginPage() {
     event: React.FormEvent<HTMLFormElement>,
   ) => {
     event.preventDefault();
+    if (busy) return;
+
     setBusy(true);
     setError('');
 
@@ -65,6 +67,22 @@ export function LoginPage() {
     } finally {
       setBusy(false);
     }
+  };
+
+  const handleFormKeyDown = (
+    event: React.KeyboardEvent<HTMLFormElement>,
+  ) => {
+    if (
+      event.key !== 'Enter'
+      || event.nativeEvent.isComposing
+      || busy
+      || !(event.target instanceof HTMLInputElement)
+    ) {
+      return;
+    }
+
+    event.preventDefault();
+    event.currentTarget.requestSubmit();
   };
 
   const logo = logoFallback ? brandMark : brandLogo;
@@ -132,7 +150,11 @@ export function LoginPage() {
             </div>
           </div>
         ) : (
-          <form onSubmit={handleLogin} className="login-v2-form">
+          <form
+            onSubmit={handleLogin}
+            onKeyDown={handleFormKeyDown}
+            className="login-v2-form"
+          >
             <label>
               <span>E-mail corporativo</span>
               <div className="login-v2-input">
@@ -182,6 +204,7 @@ export function LoginPage() {
             {error && <p className="form-error login-v2-error">{error}</p>}
 
             <button
+              type="submit"
               className="primary-button wide login-v2-submit"
               disabled={busy}
             >
