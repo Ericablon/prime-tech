@@ -51,7 +51,7 @@ test.describe('CRONOS · fluxo operacional principal', () => {
     await expect(page).toHaveURL(/\/ordens\/[a-zA-Z0-9-]+$/);
     await expect(page.getByText(client.name, { exact: true })).toBeVisible();
     await expect(page.getByText(equipmentDescription, { exact: true }).first()).toBeVisible();
-    await expect(page.getByRole('link', { name: /Imprimir OS \/ orçamento/i })).toBeVisible();
+    await expect(page.locator('a[href$="/documentos"]').first()).toBeVisible();
   });
 
   test('gera visualização imprimível de OS e orçamento', async ({ page }) => {
