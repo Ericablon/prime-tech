@@ -2,16 +2,19 @@ import {
   ArrowRight,
   Eye,
   EyeOff,
-  LockKeyhole,
+  KeyRound,
   Mail,
+  Moon,
   ShieldCheck,
+  Sun,
 } from 'lucide-react';
 
 import { useState } from 'react';
 import { Link, Navigate } from 'react-router-dom';
 
 import { useAuth } from '../contexts/AuthContext';
-import { brandLogo } from '../lib/brand';
+import { useTheme } from '../contexts/ThemeContext';
+import { brandLogo, brandMark } from '../lib/brand';
 import type { RoleCode } from '../types/domain';
 
 const roles: Array<{
@@ -31,6 +34,7 @@ export function LoginPage() {
     loginDemo,
     loginWithPassword,
   } = useAuth();
+  const { theme, toggleTheme } = useTheme();
 
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -63,19 +67,32 @@ export function LoginPage() {
     }
   };
 
-  const logo = logoFallback
-    ? `${import.meta.env.BASE_URL}brand/cronos-mark.svg`
-    : brandLogo;
+  const logo = logoFallback ? brandMark : brandLogo;
 
   return (
-    <main className="login-page login-v2">
+    <main className="login-page login-v2 login-atlas">
       <div className="login-v2-grid" aria-hidden="true" />
       <div className="login-v2-glow login-v2-glow-a" aria-hidden="true" />
       <div className="login-v2-glow login-v2-glow-b" aria-hidden="true" />
+      <div className="login-v2-horizon" aria-hidden="true" />
+      <img src={brandMark} alt="" className="login-v2-watermark" aria-hidden="true" />
+
+      <button
+        type="button"
+        className="login-theme-toggle"
+        onClick={toggleTheme}
+        aria-label={theme === 'dark' ? 'Ativar modo claro' : 'Ativar modo escuro'}
+        title={theme === 'dark' ? 'Modo claro' : 'Modo escuro'}
+      >
+        {theme === 'dark' ? <Sun size={17} /> : <Moon size={17} />}
+      </button>
 
       <section className="login-v2-card">
+        <div className="login-v2-card-shine" aria-hidden="true" />
+
         <header className="login-v2-header">
-          <div className="login-v2-logo-frame">
+          <div className="login-v2-logo-stage">
+            <div className="login-v2-logo-glow" aria-hidden="true" />
             <img
               src={logo}
               alt="Prime Tech"
@@ -120,7 +137,7 @@ export function LoginPage() {
             <label>
               <span>E-mail corporativo</span>
               <div className="login-v2-input">
-                <Mail size={18} />
+                <Mail size={17} />
                 <input
                   type="email"
                   value={email}
@@ -135,7 +152,7 @@ export function LoginPage() {
             <label>
               <span>Senha</span>
               <div className="login-v2-input">
-                <LockKeyhole size={18} />
+                <KeyRound size={17} />
                 <input
                   type={show ? 'text' : 'password'}
                   value={password}
@@ -149,13 +166,16 @@ export function LoginPage() {
                   aria-label={show ? 'Ocultar senha' : 'Mostrar senha'}
                   onClick={() => setShow((current) => !current)}
                 >
-                  {show ? <EyeOff size={18} /> : <Eye size={18} />}
+                  {show ? <EyeOff size={17} /> : <Eye size={17} />}
                 </button>
               </div>
             </label>
 
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <Link to="/recuperar-senha" style={{ color: 'var(--blue2)', fontSize: 12, fontWeight: 700 }}>
+            <div className="login-v2-form-actions">
+              <span className="login-v2-secure-hint">
+                <ShieldCheck size={13} /> Acesso protegido
+              </span>
+              <Link to="/recuperar-senha" className="login-v2-forgot-link">
                 Esqueci minha senha
               </Link>
             </div>
