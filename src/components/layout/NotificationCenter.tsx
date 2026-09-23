@@ -8,7 +8,7 @@ import {
   PackageSearch,
   UserRound,
 } from 'lucide-react';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 
 import { useAuth } from '../../contexts/AuthContext';
@@ -34,11 +34,13 @@ type FiscalErrorRow = {
   service_order_id?: string | null;
 };
 
-const READ_KEY = 'cronos-notifications-read-v1';
+function localReadKey(userId?: string, companyId?: string | null) {
+  return `cronos-notifications-read-v2:${userId ?? 'anonymous'}:${companyId ?? 'no-company'}`;
+}
 
-function readStoredIds() {
+function readStoredIds(userId?: string, companyId?: string | null) {
   try {
-    const parsed = JSON.parse(localStorage.getItem(READ_KEY) ?? '[]');
+    const parsed = JSON.parse(localStorage.getItem(localReadKey(userId, companyId)) ?? '[]');
     return Array.isArray(parsed) ? parsed.map(String) : [];
   } catch {
     return [];
@@ -61,32 +63,80 @@ function iconFor(type: OperationalAlert['icon']) {
 
 export function NotificationCenter() {
   const { user, mode } = useAuth();
-  const { orders, stock, installments, companyId } = usePrimeTech();
+  const { orders, stock, installments, companyId, refresh } = usePrimeTech();
   const navigate = useNavigate();
   const [open, setOpen] = useState(false);
-  const [readIds, setReadIds] = useState<string[]>(readStoredIds);
+  const [readIds, setReadIds] = useState<string[]>([]);
   const [fiscalErrors, setFiscalErrors] = useState<FiscalErrorRow[]>([]);
 
-  useEffect(() => {
+  const loadFiscalErrors = useCallback(async () => {
     if (mode !== 'supabase' || !supabase || !companyId || !can(user, 'fiscal.view')) {
       setFiscalErrors([]);
       return;
     }
 
-    let alive = true;
-    void supabase
+    const { data } = await supabase
       .from('fiscal_documents')
       .select('id,document_type,error_message,service_order_id')
       .eq('company_id', companyId)
       .eq('status', 'error')
       .order('updated_at', { ascending: false })
-      .limit(8)
-      .then(({ data }) => {
-        if (alive) setFiscalErrors((data ?? []) as FiscalErrorRow[]);
-      });
+      .limit(8);
 
-    return () => { alive = false; };
+    setFiscalErrors((data ?? []) as FiscalErrorRow[]);
   }, [companyId, mode, user]);
+
+  const loadReadIds = useCallback(async () => {
+    if (!user?.id || !companyId) {
+      setReadIds([]);
+      return;
+    }
+
+    const fallback = readStoredIds(user.id, companyId);
+    if (mode !== 'supabase' || !supabase) {
+      setReadIds(fallback);
+      return;
+    }
+
+    const { data, error } = await supabase
+      .from('notification_reads')
+      .select('alert_key')
+      .eq('company_id', companyId)
+      .eq('user_id', user.id)
+      .order('read_at', { ascending: false })
+      .limit(500);
+
+    if (error) {
+      setReadIds(fallback);
+      return;
+    }
+
+    const ids = (data ?? []).map((row) => String(row.alert_key));
+    setReadIds(ids);
+    localStorage.setItem(localReadKey(user.id, companyId), JSON.stringify(ids));
+  }, [companyId, mode, user?.id]);
+
+  useEffect(() => {
+    void loadFiscalErrors();
+    void loadReadIds();
+  }, [loadFiscalErrors, loadReadIds]);
+
+  useEffect(() => {
+    if (mode !== 'supabase' || !supabase || !companyId || !user?.id) return;
+    const client = supabase;
+    const channel = client
+      .channel(`cronos-operational-alerts:${companyId}:${user.id}`)
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'service_orders', filter: `company_id=eq.${companyId}` }, () => { void refresh(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'stock_items', filter: `company_id=eq.${companyId}` }, () => { void refresh(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'payment_installments', filter: `company_id=eq.${companyId}` }, () => { void refresh(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'fiscal_documents', filter: `company_id=eq.${companyId}` }, () => { void loadFiscalErrors(); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'notification_reads', filter: `user_id=eq.${user.id}` }, () => { void loadReadIds(); })
+      .subscribe();
+
+    return () => {
+      void client.removeChannel(channel);
+    };
+  }, [companyId, loadFiscalErrors, loadReadIds, mode, refresh, user?.id]);
 
   const alerts = useMemo<OperationalAlert[]>(() => {
     const result: OperationalAlert[] = [];
@@ -109,13 +159,13 @@ export function NotificationCenter() {
             });
           }
 
-          if (order.status === 'waiting_customer' && daysSince(order.updated_at) >= 1) {
+          if (order.status === 'waiting_customer' && daysSince(order.updated_at) >= 1 && can(user, 'orders.commercial')) {
             result.push({
               id: `followup-${order.id}`,
               title: `Follow-up pendente · ${code}`,
               detail: `Orçamento aguardando cliente há ${Math.max(daysSince(order.updated_at), 1)} dia(s).`,
               tone: 'warning',
-              to: '/comercial',
+              to: `/comercial?os=${order.id}`,
               icon: 'clock',
             });
           }
@@ -151,7 +201,7 @@ export function NotificationCenter() {
               title: `Sem técnico definido · ${code}`,
               detail: 'A OS está na operação técnica, mas ainda não possui responsável definido.',
               tone: 'warning',
-              to: '/agenda',
+              to: can(user, 'schedule.manage') ? `/agenda?os=${order.id}` : `/ordens/${order.id}`,
               icon: 'user',
             });
           }
@@ -162,7 +212,7 @@ export function NotificationCenter() {
               title: `Programação vencida · ${code}`,
               detail: 'A data programada da OS passou e ela ainda não foi liberada.',
               tone: 'danger',
-              to: '/agenda',
+              to: `/agenda?os=${order.id}`,
               icon: 'clock',
             });
           }
@@ -223,19 +273,29 @@ export function NotificationCenter() {
 
   const unread = alerts.filter((alert) => !readIds.includes(alert.id));
 
+  async function persistRead(ids: string[]) {
+    if (!user?.id || !companyId) return;
+    const unique = [...new Set(ids)];
+    setReadIds(unique);
+    localStorage.setItem(localReadKey(user.id, companyId), JSON.stringify(unique));
+
+    if (mode !== 'supabase' || !supabase || !unique.length) return;
+    const rows = unique.map((alertKey) => ({
+      company_id: companyId,
+      user_id: user.id,
+      alert_key: alertKey,
+      read_at: new Date().toISOString(),
+    }));
+    await supabase.from('notification_reads').upsert(rows, { onConflict: 'company_id,user_id,alert_key' });
+  }
+
   function markCurrentRead() {
-    const ids = alerts.map((alert) => alert.id);
-    setReadIds(ids);
-    localStorage.setItem(READ_KEY, JSON.stringify(ids));
+    void persistRead([...readIds, ...alerts.map((alert) => alert.id)]);
   }
 
   function openAlert(alert: OperationalAlert) {
     setOpen(false);
-    if (!readIds.includes(alert.id)) {
-      const next = [...readIds, alert.id];
-      setReadIds(next);
-      localStorage.setItem(READ_KEY, JSON.stringify(next));
-    }
+    if (!readIds.includes(alert.id)) void persistRead([...readIds, alert.id]);
     navigate(alert.to);
   }
 
