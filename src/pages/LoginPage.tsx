@@ -47,17 +47,18 @@ export function LoginPage() {
     return <Navigate to="/" replace />;
   }
 
-  const handleLogin = async (
-    event: React.FormEvent<HTMLFormElement>,
-  ) => {
-    event.preventDefault();
+  const submitCredentials = async () => {
     if (busy) return;
+    if (!email.trim() || !password) {
+      setError('Informe e-mail e senha.');
+      return;
+    }
 
     setBusy(true);
     setError('');
 
     try {
-      await loginWithPassword(email, password);
+      await loginWithPassword(email.trim(), password);
     } catch (cause) {
       setError(
         cause instanceof Error
@@ -69,20 +70,20 @@ export function LoginPage() {
     }
   };
 
-  const handleFormKeyDown = (
-    event: React.KeyboardEvent<HTMLFormElement>,
+  const handleLogin = (
+    event: React.FormEvent<HTMLFormElement>,
   ) => {
-    if (
-      event.key !== 'Enter'
-      || event.nativeEvent.isComposing
-      || busy
-      || !(event.target instanceof HTMLInputElement)
-    ) {
-      return;
-    }
-
     event.preventDefault();
-    event.currentTarget.requestSubmit();
+    void submitCredentials();
+  };
+
+  const handleInputEnter = (
+    event: React.KeyboardEvent<HTMLInputElement>,
+  ) => {
+    if (event.key !== 'Enter' || event.nativeEvent.isComposing) return;
+    event.preventDefault();
+    event.stopPropagation();
+    void submitCredentials();
   };
 
   const logo = logoFallback ? brandMark : brandLogo;
@@ -152,7 +153,6 @@ export function LoginPage() {
         ) : (
           <form
             onSubmit={handleLogin}
-            onKeyDown={handleFormKeyDown}
             className="login-v2-form"
           >
             <label>
@@ -163,7 +163,9 @@ export function LoginPage() {
                   type="email"
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
+                  onKeyDown={handleInputEnter}
                   autoComplete="username"
+                  enterKeyHint="next"
                   placeholder="nome@empresa.com.br"
                   required
                 />
@@ -178,7 +180,9 @@ export function LoginPage() {
                   type={show ? 'text' : 'password'}
                   value={password}
                   onChange={(event) => setPassword(event.target.value)}
+                  onKeyDown={handleInputEnter}
                   autoComplete="current-password"
+                  enterKeyHint="go"
                   placeholder="Digite sua senha"
                   required
                 />
@@ -206,7 +210,7 @@ export function LoginPage() {
             <button
               type="submit"
               className="primary-button wide login-v2-submit"
-              disabled={busy}
+              disabled={busy || !email.trim() || !password}
             >
               <span>{busy ? 'Entrando...' : 'Entrar no sistema'}</span>
               {!busy && <ArrowRight size={18} />}
