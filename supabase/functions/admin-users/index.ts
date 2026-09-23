@@ -84,6 +84,8 @@ Deno.serve(async (req) => {
     }
 
     if (!callerAccess) return json({ error: 'Usuário sem acesso à empresa.' }, 403);
+    const callerRole = String(callerAccess.role_code) as RoleCode;
+    const callerIsAdmin = callerRole === 'admin';
 
     let canManage = false;
     if (callerAccess.access_profile_id) {
@@ -161,13 +163,16 @@ Deno.serve(async (req) => {
 
       const { data: targetAccess, error: targetAccessError } = await admin
         .from('user_company_access')
-        .select('user_id')
+        .select('user_id,role_code')
         .eq('user_id', body.userId)
         .eq('company_id', body.companyId)
         .limit(1)
         .maybeSingle();
       if (targetAccessError) throw targetAccessError;
       if (!targetAccess) return json({ error: 'Usuário não está vinculado a esta empresa.' }, 404);
+      if (String(targetAccess.role_code) === 'admin' && !callerIsAdmin) {
+        return json({ error: 'Somente um administrador pode definir a senha de outro administrador.' }, 403);
+      }
 
       const { error: passwordError } = await admin.auth.admin.updateUserById(body.userId, { password });
       if (passwordError) throw passwordError;
@@ -212,6 +217,9 @@ Deno.serve(async (req) => {
         targetAccess = legacyTarget.data as typeof targetAccess;
       }
       if (!targetAccess) return json({ error: 'Usuário não está vinculado a esta empresa.' }, 404);
+      if ((String(targetAccess.role_code) === 'admin' || resolved.roleCode === 'admin') && !callerIsAdmin) {
+        return json({ error: 'Somente um administrador pode criar, promover ou editar outro administrador.' }, 403);
+      }
 
       const nextActive = body.active !== false;
       if (body.userId === authData.user.id) {
@@ -264,6 +272,9 @@ Deno.serve(async (req) => {
     }
 
     const resolved = await resolveProfile();
+    if (resolved.roleCode === 'admin' && !callerIsAdmin) {
+      return json({ error: 'Somente um administrador pode criar outro administrador.' }, 403);
+    }
 
     const { data: branch, error: branchError } = await admin
       .from('branches')
