@@ -1,0 +1,161 @@
+/* Prime Tech / Cronos — refinamentos finais de marca, contraste e logos. */
+
+/* Logos da interface: usa o emblema da Prime Tech recortado em círculo. */
+.brand-logo-wrap,
+.login-v2-logo-stage,
+.login-v2-logo-frame,
+.sidebar-foot-logo-wrap {
+  border-radius: 50% !important;
+  overflow: hidden !important;
+}
+
+.brand-logo-wrap {
+  background: transparent !important;
+  border-color: rgba(82, 151, 245, .30) !important;
+  box-shadow: 0 8px 22px rgba(20, 78, 160, .16) !important;
+}
+
+.brand-logo-image,
+.login-v2-logo,
+.sidebar-foot-logo {
+  width: 100%;
+  height: 100%;
+  display: block;
+  object-fit: cover;
+  border-radius: 50% !important;
+}
+
+.brand-logo-image:not(.fallback),
+.login-v2-logo:not(.fallback),
+.sidebar-foot-logo {
+  transform: scale(1.035);
+}
+
+.login-v2-logo-stage,
+.login-v2-logo-frame {
+  background: transparent !important;
+  border-color: rgba(82, 151, 245, .30) !important;
+  box-shadow:
+    0 18px 38px rgba(0, 0, 0, .24),
+    0 0 34px rgba(47, 140, 255, .10) !important;
+}
+
+/* Marca d'água do login: somente o símbolo circular, sem o quadrado da imagem. */
+.login-v2-watermark {
+  width: min(112vw, 1120px) !important;
+  aspect-ratio: 1;
+  height: auto !important;
+  border-radius: 50% !important;
+  clip-path: circle(49% at 50% 50%);
+  opacity: .028 !important;
+  filter: grayscale(1) brightness(1.6) contrast(.9) !important;
+}
+
+/* Rodapé da sidebar com símbolo da marca e leitura reforçada. */
+.sidebar-foot-logo-wrap {
+  width: 36px;
+  height: 36px;
+  flex: 0 0 36px;
+  border: 1px solid rgba(96, 158, 239, .26);
+  background: #06101d;
+  box-shadow: 0 7px 18px rgba(0, 0, 0, .16);
+}
+
+.premium-sidebar-foot {
+  gap: 10px !important;
+  background: rgba(13, 31, 53, .92) !important;
+  border-color: rgba(103, 158, 229, .22) !important;
+}
+
+.premium-sidebar-foot .sidebar-foot-copy strong {
+  color: #eef5ff !important;
+  font-weight: 850 !important;
+  letter-spacing: .07em !important;
+}
+
+.premium-sidebar-foot .sidebar-foot-copy span {
+  color: #a9bad0 !important;
+  font-weight: 600 !important;
+  opacity: 1 !important;
+}
+
+/* Reforço adicional do modo escuro: textos auxiliares não devem sumir. */
+html[data-theme='dark'] .premium-content p,
+html[data-theme='dark'] .premium-content small,
+html[data-theme='dark'] .premium-content .muted,
+html[data-theme='dark'] .premium-topbar small,
+html[data-theme='dark'] .premium-sidebar small {
+  color: #adbed2 !important;
+  opacity: 1 !important;
+}
+
+html[data-theme='dark'] .premium-nav .nav-child {
+  color: #b4c5da !important;
+}
+
+html[data-theme='dark'] .nav-section-title {
+  color: #9bafc7 !important;
+}
+
+html[data-theme='dark'] .premium-content th {
+  color: #afc1d6 !important;
+}
+
+/* Tema claro: remove o bloco escuro do rodapé e mantém contraste alto. */
+html[data-theme='light'] .premium-sidebar-foot {
+  background: #edf4fc !important;
+  border-color: rgba(43, 92, 150, .18) !important;
+  box-shadow: inset 0 1px rgba(255, 255, 255, .8);
+}
+
+html[data-theme='light'] .sidebar-foot-logo-wrap {
+  background: #ffffff;
+  border-color: rgba(43, 92, 150, .18);
+  box-shadow: 0 7px 18px rgba(37, 75, 121, .08);
+}
+
+html[data-theme='light'] .premium-sidebar-foot .sidebar-foot-copy strong {
+  color: #17314e !important;
+  font-weight: 900 !important;
+}
+
+html[data-theme='light'] .premium-sidebar-foot .sidebar-foot-copy span {
+  color: #526981 !important;
+  font-weight: 650 !important;
+}
+
+html[data-theme='light'] .brand-logo-wrap,
+html[data-theme='light'] .login-v2-logo-stage,
+html[data-theme='light'] .login-v2-logo-frame {
+  background: transparent !important;
+  border-color: rgba(43, 92, 150, .18) !important;
+}
+
+html[data-theme='light'] .login-v2-watermark {
+  opacity: .032 !important;
+  filter: grayscale(1) brightness(.45) contrast(.8) !important;
+}
+
+/* Login sem subtítulo: aproxima o formulário do título sem perder respiro. */
+.login-atlas .login-v2-form,
+.login-atlas .login-v2-demo {
+  margin-top: 22px;
+}
+
+/* O relatório continua branco mesmo quando o sistema está no modo escuro. */
+.cronos-print-page,
+.cronos-print-page * {
+  color-scheme: light;
+}
+
+@media (max-width: 640px) {
+  .login-v2-watermark {
+    width: 150vw !important;
+  }
+
+  .sidebar-foot-logo-wrap {
+    width: 34px;
+    height: 34px;
+    flex-basis: 34px;
+  }
+}
