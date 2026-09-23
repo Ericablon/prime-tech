@@ -13,8 +13,8 @@ import {
   Wrench,
   XCircle,
 } from 'lucide-react';
-import { useMemo, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 
 import { MetricCard } from '../components/ui/MetricCard';
 import { PageHeader } from '../components/ui/PageHeader';
@@ -53,6 +53,8 @@ export function CommercialPage() {
     transitionOrder,
     recordContact,
   } = usePrimeTech();
+  const [searchParams] = useSearchParams();
+  const focusedOrderId = searchParams.get('os');
 
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [contactNote, setContactNote] = useState('');
@@ -65,6 +67,14 @@ export function CommercialPage() {
     ),
     [orders],
   );
+
+  useEffect(() => {
+    if (!focusedOrderId || !queue.some((order) => order.id === focusedOrderId)) return;
+    const timer = window.setTimeout(() => {
+      document.getElementById(`commercial-order-${focusedOrderId}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }, 80);
+    return () => window.clearTimeout(timer);
+  }, [focusedOrderId, queue]);
 
   const technicalDemand = useMemo(() => {
     const technicalStatuses = ['waiting_technician', 'diagnosis', 'approved', 'in_repair', 'waiting_part', 'quality_check'];
@@ -149,6 +159,12 @@ export function CommercialPage() {
       <AlertTriangle size={20}/><div><strong>Não foi possível concluir a operação</strong><p>{localError || error}</p></div>
     </section>}
 
+    {focusedOrderId && !queue.some((order) => order.id === focusedOrderId) && (
+      <section className="notice" style={{ marginBottom: 16 }}>
+        <CheckCircle2 size={20}/><div><strong>A OS indicada não está mais na fila Comercial</strong><p>Ela pode ter sido aprovada, recusada ou avançado para outra etapa. <Link to={`/ordens/${focusedOrderId}`}>Abrir a OS</Link>.</p></div>
+      </section>
+    )}
+
     <div className="metrics-grid">
       <MetricCard label="Prontos para orçamento" value={orders.filter((o) => ['ready_for_commercial', 'budget_ready'].includes(o.status)).length} icon={MessageSquareText}/>
       <MetricCard label="Aguardando cliente" value={waitingCustomer.length} icon={Clock3} tone="amber"/>
@@ -205,9 +221,10 @@ export function CommercialPage() {
           const amount = total(order);
           const waiting = order.status === 'waiting_customer';
           const selected = selectedId === order.id;
-          return <article className="commercial-card" key={order.id}>
+          const focused = focusedOrderId === order.id;
+          return <article id={`commercial-order-${order.id}`} className="commercial-card" key={order.id} style={focused ? { outline: '2px solid var(--blue2)', outlineOffset: 3 } : undefined}>
             <div>
-              <span className="order-number">{orderCode(order.order_number)}</span>
+              <span className="order-number">{orderCode(order.order_number)}{focused ? ' · OS selecionada' : ''}</span>
               <h3>{order.client_name ?? 'Cliente não identificado'}</h3>
               <p>{order.equipment ?? 'Equipamento não identificado'}</p>
               <small>{order.diagnosis ?? 'Diagnóstico técnico ainda não informado.'}</small>
@@ -219,6 +236,7 @@ export function CommercialPage() {
               <StatusBadge status={order.status}/>
               <strong>{amount > 0 ? money.format(amount) : 'Orçamento sem valor'}</strong>
               <Link to={`/ordens/${order.id}/itens`} className="ghost-button"><PackagePlus size={15}/> Itens / orçamento</Link>
+              <Link to={`/ordens/${order.id}/documentos`} className="ghost-button">Imprimir OS / orçamento</Link>
               <Link to={`/ordens/${order.id}`} className="ghost-button">Abrir OS</Link>
               {!waiting && <button className="primary-button small" disabled={saving} onClick={() => void move(order, 'waiting_customer', 'Orçamento enviado ao cliente pelo Comercial.')}><Send size={15}/> Enviar orçamento</button>}
               {waiting && <>
