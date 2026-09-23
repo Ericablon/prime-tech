@@ -15,6 +15,7 @@ export const defaultPermissions: Record<RoleCode, Permission[]> = {
     'orders.commercial',
     'orders.approve',
     'orders.deliver',
+    'schedule.manage',
     'stock.view',
     'stock.reserve',
     'stock.consume',
@@ -44,6 +45,7 @@ export const defaultPermissions: Record<RoleCode, Permission[]> = {
     'orders.commercial',
     'orders.approve',
     'orders.deliver',
+    'schedule.manage',
     'stock.view',
     'stock.reserve',
     'stock.consume',
@@ -71,6 +73,7 @@ export const defaultPermissions: Record<RoleCode, Permission[]> = {
     'orders.commercial',
     'orders.approve',
     'orders.deliver',
+    'schedule.manage',
     'stock.view',
   ],
   comercial: [
@@ -84,6 +87,7 @@ export const defaultPermissions: Record<RoleCode, Permission[]> = {
     'orders.commercial',
     'orders.approve',
     'orders.deliver',
+    'schedule.manage',
     'stock.view',
   ],
   tecnico: [
