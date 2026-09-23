@@ -7,6 +7,9 @@ import { StatusBadge } from '../components/ui/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { usePrimeTech } from '../contexts/PrimeTechContext';
 import { money, orderCode } from '../lib/formatters';
+import type { ServiceOrder } from '../types/domain';
+
+type OrderEquipmentSnapshot = ServiceOrder & { equipment_description?: string | null };
 
 export function OrderDocumentsPage() {
   const { id } = useParams();
@@ -28,8 +31,10 @@ export function OrderDocumentsPage() {
     );
   }
 
+  const snapshot = order as OrderEquipmentSnapshot;
   const client = clients.find((item) => item.id === order.client_id);
   const equipmentItem = equipment.find((item) => item.id === order.equipment_id);
+  const equipmentLabel = snapshot.equipment_description?.trim() || (equipmentItem ? [equipmentItem.category, equipmentItem.brand, equipmentItem.model].filter(Boolean).join(' ') : order.equipment ?? 'Equipamento');
   const total = Number(order.total_amount ?? order.quote_total ?? 0);
 
   return (
@@ -48,7 +53,7 @@ export function OrderDocumentsPage() {
         </div>
         <div className="mini-kpis">
           <div><span>{orderCode(order.order_number)}</span><small>Ordem de Serviço</small></div>
-          <div><span>{equipmentItem ? [equipmentItem.category, equipmentItem.brand, equipmentItem.model].filter(Boolean).join(' ') : order.equipment ?? 'Equipamento'}</span><small>Equipamento</small></div>
+          <div><span>{equipmentLabel}</span><small>Equipamento recebido</small></div>
           <div><span>{money.format(total)}</span><small>Total do orçamento</small></div>
         </div>
       </section>
@@ -60,7 +65,7 @@ export function OrderDocumentsPage() {
         </div>
         <div className="notice" style={{ marginBottom: 18 }}>
           <Printer size={19} />
-          <div><strong>Pronto para entregar ao cliente</strong><p>A OS inclui cadastro, equipamento, relato, diagnóstico, serviços/produtos, valores, condições e assinaturas. O orçamento mostra somente as informações comerciais necessárias para aprovação.</p></div>
+          <div><strong>Pronto para entregar ao cliente</strong><p>A OS inclui cadastro, equipamento recebido, relato, diagnóstico, serviços/produtos, valores, condições e assinaturas. O orçamento mostra somente as informações comerciais necessárias para aprovação.</p></div>
         </div>
         <OrderPrintActions order={order} client={client} equipment={equipmentItem} company={company} generatedBy={user?.full_name} />
       </section>
