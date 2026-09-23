@@ -44,8 +44,13 @@ export async function createPilotEquipment(page: Page, clientName: string, suffi
   await page.getByRole('link', { name: 'Equipamentos' }).click();
   await expect(page).toHaveURL(/\/equipamentos$/);
   await page.getByRole('button', { name: 'Novo equipamento' }).click();
-  await expect(page.getByLabel('Cliente proprietário')).toContainText(clientName);
-  await page.getByLabel('Cliente proprietário').selectOption({ label: clientName });
+
+  const clientSelect = page.getByLabel('Cliente proprietário');
+  await expect(clientSelect).toContainText(clientName);
+  const clientValue = await clientSelect.locator('option').filter({ hasText: clientName }).getAttribute('value');
+  expect(clientValue).toBeTruthy();
+  await clientSelect.selectOption(clientValue!);
+
   await page.getByLabel('Categoria').selectOption('Notebook');
   await page.getByLabel('Marca').fill('Lenovo');
   await page.getByLabel('Modelo').fill('ThinkPad E2E');
