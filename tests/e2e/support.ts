@@ -1,5 +1,17 @@
 import { expect, type Page } from '@playwright/test';
 
+const DEMO_STORAGE_KEY = 'cronos-demo-data-v2';
+
+async function expectDemoStorageContains(page: Page, value: string) {
+  await expect.poll(
+    () => page.evaluate(({ key, expected }) => {
+      const raw = localStorage.getItem(key) ?? '';
+      return raw.includes(expected);
+    }, { key: DEMO_STORAGE_KEY, expected: value }),
+    { timeout: 5_000 },
+  ).toBe(true);
+}
+
 export async function loginAsGestor(page: Page) {
   await page.goto('/login');
   await page.getByRole('button', { name: 'Gestor' }).click();
@@ -21,6 +33,7 @@ export async function createPilotClient(page: Page, suffix = 'E2E') {
   await page.getByRole('button', { name: 'Salvar cliente' }).click();
 
   await expect(page.getByRole('table')).toContainText(name);
+  await expectDemoStorageContains(page, name);
   return { name, document };
 }
 
@@ -38,5 +51,6 @@ export async function createPilotEquipment(page: Page, clientName: string, suffi
   await page.getByRole('button', { name: 'Salvar equipamento' }).click();
 
   await expect(page.getByRole('table')).toContainText(serial);
+  await expectDemoStorageContains(page, serial);
   return { serial };
 }
