@@ -21,6 +21,7 @@ import { ForgotPasswordPage } from './pages/ForgotPasswordPage';
 import { LoginPage } from './pages/LoginPage';
 import { NewOrderPage } from './pages/NewOrderPage';
 import { OrderDetailPage } from './pages/OrderDetailPage';
+import { OrderDocumentsPage } from './pages/OrderDocumentsPage';
 import { OrderItemsPage } from './pages/OrderItemsPage';
 import { OrdersPage } from './pages/OrdersPage';
 import { ReportsPage } from './pages/ReportsPage';
@@ -62,6 +63,7 @@ export default function App() {
         <Route path="ordens" element={<PermissionGuard permission="orders.view"><OrdersPage /></PermissionGuard>} />
         <Route path="ordens/nova" element={<PermissionGuard permission="orders.create"><NewOrderPage /></PermissionGuard>} />
         <Route path="ordens/:id/itens" element={<PermissionGuard permission="orders.view"><OrderItemsPage /></PermissionGuard>} />
+        <Route path="ordens/:id/documentos" element={<PermissionGuard permission="orders.view"><OrderDocumentsPage /></PermissionGuard>} />
         <Route path="ordens/:id" element={<PermissionGuard permission="orders.view"><OrderDetailPage /></PermissionGuard>} />
         <Route path="tecnico" element={<PermissionGuard permission="orders.tech"><TechnicianPage /></PermissionGuard>} />
         <Route path="agenda" element={<PermissionGuard permission="orders.view"><SchedulePage /></PermissionGuard>} />
