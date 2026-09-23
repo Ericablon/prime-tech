@@ -14,6 +14,8 @@ import { useAuth } from '../../contexts/AuthContext';
 import { usePrimeTech } from '../../contexts/PrimeTechContext';
 import { useTheme } from '../../contexts/ThemeContext';
 import { orderCode } from '../../lib/formatters';
+import { can } from '../../lib/permissions';
+import type { Permission } from '../../types/domain';
 import { NotificationCenter } from './NotificationCenter';
 import { Sidebar } from './Sidebar';
 
@@ -23,24 +25,25 @@ type GlobalResult = {
   subtitle: string;
   to: string;
   section: string;
+  permission?: Permission;
 };
 
 const moduleResults: GlobalResult[] = [
-  { key: 'module-dashboard', label: 'Dashboard', subtitle: 'Visão geral da empresa', to: '/', section: 'Módulos' },
-  { key: 'module-clients', label: 'Clientes', subtitle: 'Cadastro, CPF/CNPJ e contatos', to: '/clientes', section: 'Módulos' },
-  { key: 'module-equipment', label: 'Equipamentos', subtitle: 'Computadores, impressoras e histórico', to: '/equipamentos', section: 'Módulos' },
-  { key: 'module-orders', label: 'Ordens de Serviço', subtitle: 'OS, diagnóstico e execução', to: '/ordens', section: 'Módulos' },
-  { key: 'module-commercial', label: 'Comercial', subtitle: 'Orçamentos, aprovação e follow-up', to: '/comercial', section: 'Módulos' },
-  { key: 'module-tech', label: 'Operação Técnica', subtitle: 'Fila e execução dos técnicos', to: '/tecnico', section: 'Módulos' },
-  { key: 'module-schedule', label: 'Programação Técnica', subtitle: 'Agenda e programação dos técnicos', to: '/agenda', section: 'Módulos' },
-  { key: 'module-stock', label: 'Estoque', subtitle: 'Produtos, peças e saldos', to: '/estoque', section: 'Módulos' },
-  { key: 'module-stock-history', label: 'Movimentações de Estoque', subtitle: 'Entradas, saídas, reservas e consumo por OS', to: '/estoque/movimentacoes', section: 'Módulos' },
-  { key: 'module-finance', label: 'Financeiro', subtitle: 'Entradas, saídas, parcelas e pagamentos', to: '/financeiro', section: 'Módulos' },
-  { key: 'module-dre', label: 'DRE', subtitle: 'Resultado por categorias financeiras', to: '/financeiro/dre', section: 'Módulos' },
-  { key: 'module-fiscal', label: 'Fiscal e Notas', subtitle: 'NF-e, NFC-e e NFS-e', to: '/fiscal', section: 'Módulos' },
-  { key: 'module-fiscal-settings', label: 'Configuração Fiscal', subtitle: 'Emitente, certificado A1 e tributação', to: '/fiscal/configuracao', section: 'Módulos' },
-  { key: 'module-reports', label: 'Relatórios', subtitle: 'Relatórios gerenciais e PDF', to: '/relatorios', section: 'Módulos' },
-  { key: 'module-admin', label: 'Administração', subtitle: 'Usuários, permissões e configurações', to: '/administracao', section: 'Módulos' },
+  { key: 'module-dashboard', label: 'Dashboard', subtitle: 'Visão geral da empresa', to: '/', section: 'Módulos', permission: 'dashboard.view' },
+  { key: 'module-clients', label: 'Clientes', subtitle: 'Cadastro, CPF/CNPJ e contatos', to: '/clientes', section: 'Módulos', permission: 'clients.view' },
+  { key: 'module-equipment', label: 'Equipamentos', subtitle: 'Computadores, impressoras e histórico', to: '/equipamentos', section: 'Módulos', permission: 'equipment.view' },
+  { key: 'module-orders', label: 'Ordens de Serviço', subtitle: 'OS, diagnóstico e execução', to: '/ordens', section: 'Módulos', permission: 'orders.view' },
+  { key: 'module-commercial', label: 'Comercial', subtitle: 'Orçamentos, aprovação e follow-up', to: '/comercial', section: 'Módulos', permission: 'orders.commercial' },
+  { key: 'module-tech', label: 'Operação Técnica', subtitle: 'Fila e execução dos técnicos', to: '/tecnico', section: 'Módulos', permission: 'orders.tech' },
+  { key: 'module-schedule', label: 'Programação Técnica', subtitle: 'Agenda e programação dos técnicos', to: '/agenda', section: 'Módulos', permission: 'orders.view' },
+  { key: 'module-stock', label: 'Estoque', subtitle: 'Produtos, peças e saldos', to: '/estoque', section: 'Módulos', permission: 'stock.view' },
+  { key: 'module-stock-history', label: 'Movimentações de Estoque', subtitle: 'Entradas, saídas, reservas e consumo por OS', to: '/estoque/movimentacoes', section: 'Módulos', permission: 'stock.view' },
+  { key: 'module-finance', label: 'Financeiro', subtitle: 'Entradas, saídas, parcelas e pagamentos', to: '/financeiro', section: 'Módulos', permission: 'finance.view' },
+  { key: 'module-dre', label: 'DRE', subtitle: 'Resultado por categorias financeiras', to: '/financeiro/dre', section: 'Módulos', permission: 'finance.dre' },
+  { key: 'module-fiscal', label: 'Fiscal e Notas', subtitle: 'NF-e, NFC-e e NFS-e', to: '/fiscal', section: 'Módulos', permission: 'fiscal.view' },
+  { key: 'module-fiscal-settings', label: 'Configuração Fiscal', subtitle: 'Emitente, certificado A1 e tributação', to: '/fiscal/configuracao', section: 'Módulos', permission: 'fiscal.settings' },
+  { key: 'module-reports', label: 'Relatórios', subtitle: 'Relatórios gerenciais e PDF', to: '/relatorios', section: 'Módulos', permission: 'reports.view' },
+  { key: 'module-admin', label: 'Administração', subtitle: 'Usuários, permissões e configurações', to: '/administracao', section: 'Módulos', permission: 'settings.manage' },
 ];
 
 function normalize(value: unknown) {
@@ -48,7 +51,7 @@ function normalize(value: unknown) {
 }
 
 export function AppShell({ children }: { children: ReactNode }) {
-  const { user, logout } = useAuth();
+  const { user, logout, accesses, activeAccessKey, switchAccess } = useAuth();
   const { clients, equipment, orders, stock, finance } = usePrimeTech();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
@@ -77,13 +80,15 @@ export function AppShell({ children }: { children: ReactNode }) {
     .join('')
     .toUpperCase();
 
+  const activeAccess = accesses.find((item) => item.key === activeAccessKey) ?? null;
+
   const results = useMemo<GlobalResult[]>(() => {
     const term = normalize(search.trim());
     if (term.length < 1) return [];
 
-    const modules = moduleResults.filter((item) => normalize(`${item.label} ${item.subtitle}`).includes(term));
+    const modules = moduleResults.filter((item) => can(user, item.permission ?? 'dashboard.view') && normalize(`${item.label} ${item.subtitle}`).includes(term));
 
-    const orderResults = orders
+    const orderResults = can(user, 'orders.view') ? orders
       .filter((order) => normalize([
         orderCode(order.order_number),
         order.order_number,
@@ -102,9 +107,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         subtitle: order.equipment ?? order.reported_issue ?? 'Ordem de Serviço',
         to: `/ordens/${order.id}`,
         section: 'Ordens de Serviço',
-      }));
+      })) : [];
 
-    const clientResults = clients
+    const clientResults = can(user, 'clients.view') ? clients
       .filter((client) => normalize([
         client.name,
         client.document,
@@ -120,9 +125,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         subtitle: `Cliente · ${client.document || client.phone || client.email || 'cadastro'}`,
         to: `/clientes?busca=${encodeURIComponent(client.name)}`,
         section: 'Clientes',
-      }));
+      })) : [];
 
-    const equipmentResults = equipment
+    const equipmentResults = can(user, 'equipment.view') ? equipment
       .filter((item) => normalize([
         item.technical_number,
         item.category,
@@ -138,9 +143,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         subtitle: `Equipamento · ${item.serial_number || `código ${item.technical_number ?? '—'}`}`,
         to: `/equipamentos?busca=${encodeURIComponent(item.serial_number || item.model || item.brand || item.category)}`,
         section: 'Equipamentos',
-      }));
+      })) : [];
 
-    const stockResults = stock
+    const stockResults = can(user, 'stock.view') ? stock
       .filter((item) => normalize([item.sku, item.name, item.barcode, item.ncm].filter(Boolean).join(' ')).includes(term))
       .slice(0, 6)
       .map((item) => ({
@@ -149,9 +154,9 @@ export function AppShell({ children }: { children: ReactNode }) {
         subtitle: `Estoque · físico ${item.physical ?? item.quantity ?? 0} · reservado ${item.reserved ?? item.reserved_quantity ?? 0}`,
         to: `/estoque?busca=${encodeURIComponent(item.sku || item.name)}`,
         section: 'Estoque',
-      }));
+      })) : [];
 
-    const financeResults = finance
+    const financeResults = can(user, 'finance.view') ? finance
       .filter((entry) => normalize([
         entry.description,
         entry.category,
@@ -166,10 +171,10 @@ export function AppShell({ children }: { children: ReactNode }) {
         subtitle: `${entry.type === 'income' ? 'Entrada' : 'Saída'} · ${entry.category} · R$ ${Number(entry.amount).toFixed(2)}`,
         to: `/financeiro?busca=${encodeURIComponent(entry.description)}`,
         section: 'Financeiro',
-      }));
+      })) : [];
 
     return [...orderResults, ...clientResults, ...equipmentResults, ...stockResults, ...financeResults, ...modules].slice(0, 18);
-  }, [clients, equipment, finance, orders, search, stock]);
+  }, [clients, equipment, finance, orders, search, stock, user]);
 
   function openResult(result: GlobalResult) {
     setSearch('');
@@ -202,7 +207,25 @@ export function AppShell({ children }: { children: ReactNode }) {
         <header className="topbar premium-topbar">
           <div className="topbar-left">
             <button className="menu-button" onClick={() => setMobile(true)} aria-label="Abrir menu"><Menu /></button>
-            <div className="topbar-context"><span>Prime Tech</span><strong>Cronos</strong></div>
+            <div className="topbar-context">
+              <span>{activeAccess?.company_name ?? 'Prime Tech'}</span>
+              <strong>{activeAccess?.branch_name ? `Cronos · ${activeAccess.branch_name}` : 'Cronos'}</strong>
+            </div>
+            {accesses.length > 1 && (
+              <select
+                value={activeAccessKey ?? ''}
+                onChange={(event) => void switchAccess(event.target.value)}
+                aria-label="Selecionar empresa e unidade"
+                title="Trocar empresa / unidade"
+                style={{ minHeight: 36, maxWidth: 250, borderRadius: 10, border: '1px solid var(--line)', background: 'var(--surface2)', color: 'var(--premium-text)', padding: '0 10px' }}
+              >
+                {accesses.map((access) => (
+                  <option key={access.key} value={access.key}>
+                    {access.company_name}{access.branch_name ? ` · ${access.branch_name}` : ''}
+                  </option>
+                ))}
+              </select>
+            )}
           </div>
 
           <div className="search premium-search" style={{ position: 'relative' }}>
