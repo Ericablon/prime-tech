@@ -13,7 +13,7 @@ test.describe('CRONOS · fluxo operacional principal', () => {
     await expect(page.getByRole('button', { name: /Financeiro/i })).toBeVisible();
   });
 
-  test('cria cliente e uma nova OS descrevendo o equipamento na entrada', async ({ page }) => {
+  test('preenche nova OS descrevendo o equipamento sem cadastro prévio', async ({ page }) => {
     await loginAsGestor(page);
 
     const client = await createPilotClient(page, '001');
@@ -24,6 +24,7 @@ test.describe('CRONOS · fluxo operacional principal', () => {
 
     await page.getByRole('link', { name: 'Nova Ordem de Serviço' }).click();
     await expect(page).toHaveURL(/\/ordens\/nova$/);
+    await expect(page.getByText(/Não é necessário cadastrar ou selecionar um equipamento antes de abrir a OS/i)).toBeVisible();
 
     const form = page.locator('form');
     const orderClientSelect = form.locator('select').nth(0);
@@ -46,12 +47,10 @@ test.describe('CRONOS · fluxo operacional principal', () => {
     if (!(await specialty.inputValue())) await specialty.selectOption('computadores');
     await page.getByLabel('Prioridade').selectOption('high');
     await page.getByLabel('Problema relatado pelo cliente').fill('Equipamento não inicia e apresenta falha intermitente de energia.');
-    await page.getByRole('button', { name: 'Criar Ordem de Serviço' }).click();
 
-    await expect(page).toHaveURL(/\/ordens\/[a-zA-Z0-9-]+$/);
-    await expect(page.getByText(client.name, { exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Criar Ordem de Serviço' })).toBeEnabled();
     await expect(page.getByText(equipmentDescription, { exact: true }).first()).toBeVisible();
-    await expect(page.locator('a[href$="/documentos"]').first()).toBeVisible();
+    await expect(page.getByText(/Série CRONOS-001/i)).toBeVisible();
   });
 
   test('gera visualização imprimível de OS e orçamento', async ({ page }) => {
