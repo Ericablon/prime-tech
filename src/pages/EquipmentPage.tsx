@@ -13,6 +13,7 @@ import { supabase } from '../lib/supabase';
 import type { CreateEquipmentInput, Equipment } from '../types/domain';
 
 type EquipmentForm = CreateEquipmentInput & { id?: string };
+type EquipmentWithSnapshotFlag = Equipment & { is_order_snapshot?: boolean };
 const emptyForm: EquipmentForm = { client_id:'',category:'Notebook',brand:'',model:'',serial_number:'',accessories:'',notes:'' };
 const emptyQuickClient={name:'',document:'',phone:''};
 
@@ -43,7 +44,11 @@ export function EquipmentPage(){
 
   useEffect(()=>{setSearch(searchParams.get('busca')??'');},[searchParams]);
 
-  const filteredEquipment=useMemo(()=>{const term=search.trim().toLowerCase();if(!term)return equipment;return equipment.filter((item)=>{const client=clients.find((c)=>c.id===item.client_id);return [equipmentCode(item.technical_number),client?.name,item.category,item.brand,item.model,item.serial_number,item.accessories].filter(Boolean).join(' ').toLowerCase().includes(term);});},[clients,equipment,search]);
+  const permanentEquipment=useMemo(
+    ()=>equipment.filter((item)=>!(item as EquipmentWithSnapshotFlag).is_order_snapshot),
+    [equipment],
+  );
+  const filteredEquipment=useMemo(()=>{const term=search.trim().toLowerCase();if(!term)return permanentEquipment;return permanentEquipment.filter((item)=>{const client=clients.find((c)=>c.id===item.client_id);return [equipmentCode(item.technical_number),client?.name,item.category,item.brand,item.model,item.serial_number,item.accessories].filter(Boolean).join(' ').toLowerCase().includes(term);});},[clients,permanentEquipment,search]);
 
   function handleOpen(){
     setFormError('');
@@ -109,7 +114,7 @@ export function EquipmentPage(){
   }
 
   return <>
-    <PageHeader eyebrow="Comercial" title="Equipamentos" description="Cadastro e histórico dos equipamentos vinculados aos clientes e às Ordens de Serviço. O botão + permite cadastrar o proprietário sem abandonar o equipamento." actions={can(user,'equipment.manage')?<button type="button" className="primary-button" onClick={handleOpen}><Plus size={17}/>Novo equipamento</button>:undefined}/>
+    <PageHeader eyebrow="Comercial" title="Equipamentos" description="Cadastro opcional para equipamentos recorrentes ou patrimônio do cliente. Equipamentos apenas descritos durante a abertura de uma OS não aparecem nesta lista." actions={can(user,'equipment.manage')?<button type="button" className="primary-button" onClick={handleOpen}><Plus size={17}/>Novo equipamento</button>:undefined}/>
     {open&&<section className="panel" style={{marginBottom:18}}><div className="panel-head"><div><span className="eyebrow">Cadastro</span><h2>{form.id?'Editar equipamento':'Novo equipamento'}</h2></div><button type="button" className="ghost-button small" onClick={handleClose}><X size={16}/>Fechar</button></div>
       <form onSubmit={handleSubmit} style={{display:'grid',gridTemplateColumns:'repeat(2,minmax(0,1fr))',gap:14}}>
         <label>
@@ -146,7 +151,7 @@ export function EquipmentPage(){
 
     {contextError&&<section className="notice" style={{marginBottom:16}}><div><strong>Não foi possível carregar todos os dados</strong><p>{contextError}</p></div></section>}
     <section className="panel"><div className="filters"><div className="filter-search"><Search size={16}/><input value={search} onChange={(e)=>setSearch(e.target.value)} placeholder="Buscar por cliente, equipamento, marca, modelo ou série"/></div></div>
-      {loading?<div className="empty-state"><Laptop size={38}/><h3>Carregando equipamentos</h3><p>Buscando os equipamentos cadastrados.</p></div>:filteredEquipment.length===0?<div className="empty-state"><Laptop size={38}/><h3>Nenhum equipamento encontrado</h3><p>Cadastre um equipamento ou altere a busca.</p></div>:<div className="table-wrap"><table><thead><tr><th>Código / equipamento</th><th>Cliente</th><th>Série</th><th>Histórico</th><th>Situação atual</th>{can(user,'equipment.manage')&&<th>Ação</th>}</tr></thead><tbody>{filteredEquipment.map((item)=>{const client=clients.find((c)=>c.id===item.client_id);const itemOrders=orders.filter((o)=>o.equipment_id===item.id).sort((a,b)=>new Date(b.updated_at).getTime()-new Date(a.updated_at).getTime());const current=itemOrders.find((o)=>!['delivered','cancelled'].includes(o.status));return <tr key={item.id}><td><strong>{[item.category,item.brand,item.model].filter(Boolean).join(' ')}</strong><small>{equipmentCode(item.technical_number)}</small></td><td><strong>{client?.name??'Cliente não localizado'}</strong><small>{client?.phone||'Sem telefone'}</small></td><td>{item.serial_number||'—'}</td><td><span className="muted"><Wrench size={14}/>{itemOrders.length} OS</span></td><td>{current?<><StatusBadge status={current.status}/><small style={{marginTop:6}}>OS #{String(current.order_number).padStart(6,'0')}</small></>:<span className="stock-state ok">Sem OS ativa</span>}</td>{can(user,'equipment.manage')&&<td><button type="button" className="ghost-button" onClick={()=>openEdit(item)}><Edit3 size={15}/>Editar</button></td>}</tr>;})}</tbody></table></div>}
+      {loading?<div className="empty-state"><Laptop size={38}/><h3>Carregando equipamentos</h3><p>Buscando os equipamentos cadastrados.</p></div>:filteredEquipment.length===0?<div className="empty-state"><Laptop size={38}/><h3>Nenhum equipamento encontrado</h3><p>Cadastre um equipamento recorrente ou altere a busca.</p></div>:<div className="table-wrap"><table><thead><tr><th>Código / equipamento</th><th>Cliente</th><th>Série</th><th>Histórico</th><th>Situação atual</th>{can(user,'equipment.manage')&&<th>Ação</th>}</tr></thead><tbody>{filteredEquipment.map((item)=>{const client=clients.find((c)=>c.id===item.client_id);const itemOrders=orders.filter((o)=>o.equipment_id===item.id).sort((a,b)=>new Date(b.updated_at).getTime()-new Date(a.updated_at).getTime());const current=itemOrders.find((o)=>!['delivered','cancelled'].includes(o.status));return <tr key={item.id}><td><strong>{[item.category,item.brand,item.model].filter(Boolean).join(' ')}</strong><small>{equipmentCode(item.technical_number)}</small></td><td><strong>{client?.name??'Cliente não localizado'}</strong><small>{client?.phone||'Sem telefone'}</small></td><td>{item.serial_number||'—'}</td><td><span className="muted"><Wrench size={14}/>{itemOrders.length} OS</span></td><td>{current?<><StatusBadge status={current.status}/><small style={{marginTop:6}}>OS #{String(current.order_number).padStart(6,'0')}</small></>:<span className="stock-state ok">Sem OS ativa</span>}</td>{can(user,'equipment.manage')&&<td><button type="button" className="ghost-button" onClick={()=>openEdit(item)}><Edit3 size={15}/>Editar</button></td>}</tr>;})}</tbody></table></div>}
     </section>
   </>;
 }
