@@ -7,6 +7,7 @@ import { can } from './lib/permissions';
 import type { Permission } from './types/domain';
 
 import { AccessProfilesPage } from './pages/AccessProfilesPage';
+import { AccountPasswordPage } from './pages/AccountPasswordPage';
 import { AdminPage } from './pages/AdminPage';
 import { ClientsPage } from './pages/ClientsPage';
 import { CommercialPage } from './pages/CommercialPage';
@@ -55,6 +56,7 @@ export default function App() {
 
       <Route path="/" element={<ProtectedLayout />}>
         <Route index element={<DashboardPage />} />
+        <Route path="conta/senha" element={<AccountPasswordPage />} />
         <Route path="clientes" element={<PermissionGuard permission="clients.view"><ClientsPage /></PermissionGuard>} />
         <Route path="equipamentos" element={<PermissionGuard permission="equipment.view"><EquipmentPage /></PermissionGuard>} />
         <Route path="ordens" element={<PermissionGuard permission="orders.view"><OrdersPage /></PermissionGuard>} />
