@@ -19,7 +19,9 @@ test.describe('CRONOS · fluxo operacional principal', () => {
     const client = await createPilotClient(page, '001');
     const equipment = await createPilotEquipment(page, client.name, '001');
 
-    await page.goto('/ordens/nova');
+    // Continua pelo menu do próprio sistema, como acontece na loja.
+    await page.getByRole('link', { name: 'Nova Ordem de Serviço' }).click();
+    await expect(page).toHaveURL(/\/ordens\/nova$/);
     await page.getByLabel('Cliente').selectOption({ label: client.name });
 
     const equipmentSelect = page.getByLabel('Equipamento');
