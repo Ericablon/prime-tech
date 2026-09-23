@@ -23,23 +23,24 @@ test.describe('CRONOS · fluxo operacional principal', () => {
     await page.getByRole('link', { name: 'Nova Ordem de Serviço' }).click();
     await expect(page).toHaveURL(/\/ordens\/nova$/);
 
-    const orderClientSelect = page.getByLabel('Cliente');
+    const form = page.locator('form');
+    const orderClientSelect = form.locator('select').nth(0);
     await expect(orderClientSelect).toContainText(client.name);
     const orderClientValue = await orderClientSelect.locator('option').filter({ hasText: client.name }).getAttribute('value');
     expect(orderClientValue).toBeTruthy();
     await orderClientSelect.selectOption(orderClientValue!);
 
-    const equipmentSelect = page.getByLabel('Equipamento');
+    const equipmentSelect = form.locator('select').nth(1);
     await expect(equipmentSelect).toContainText('ThinkPad E2E');
     const equipmentValue = await equipmentSelect.locator('option').filter({ hasText: 'ThinkPad E2E' }).getAttribute('value');
     expect(equipmentValue).toBeTruthy();
     await equipmentSelect.selectOption(equipmentValue!);
 
-    const specialty = page.getByLabel('Especialidade técnica');
+    const specialty = form.locator('select').nth(2);
     await expect(specialty).not.toHaveValue('');
 
-    await page.getByLabel('Prioridade').selectOption('high');
-    await page.getByLabel('Problema relatado pelo cliente').fill('Equipamento não inicia e apresenta falha intermitente de energia.');
+    await form.locator('select').nth(4).selectOption('high');
+    await page.getByRole('textbox', { name: 'Problema relatado pelo cliente' }).fill('Equipamento não inicia e apresenta falha intermitente de energia.');
     await page.getByRole('button', { name: 'Criar Ordem de Serviço' }).click();
 
     await expect(page).toHaveURL(/\/ordens\/[a-zA-Z0-9-]+$/);
