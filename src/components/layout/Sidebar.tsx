@@ -10,7 +10,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   Settings,
-  ShieldCheck,
 } from 'lucide-react';
 
 import { useEffect, useState } from 'react';
@@ -159,7 +158,9 @@ export function Sidebar({ mobile = false, collapsed = false, onNavigate, onToggl
       </nav>
 
       <div className="sidebar-foot premium-sidebar-foot">
-        <div className="sidebar-foot-icon"><ShieldCheck size={16} /></div>
+        <div className="sidebar-foot-logo-wrap">
+          <img src={brandLogo} alt="Prime Tech" className="sidebar-foot-logo" />
+        </div>
         <div className="sidebar-foot-copy"><strong>Prime Tech Cronos</strong><span>Tecnologia que impulsiona.</span></div>
       </div>
     </aside>
