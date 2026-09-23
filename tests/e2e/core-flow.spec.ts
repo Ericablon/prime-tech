@@ -44,8 +44,8 @@ test.describe('CRONOS · fluxo operacional principal', () => {
     await page.getByRole('button', { name: 'Criar Ordem de Serviço' }).click();
 
     await expect(page).toHaveURL(/\/ordens\/[a-zA-Z0-9-]+$/);
-    await expect(page.getByText(client.name)).toBeVisible();
-    await expect(page.getByText(equipment.serial)).toBeVisible();
+    await expect(page.getByText(client.name, { exact: true })).toBeVisible();
+    await expect(page.getByText(equipment.serial, { exact: true })).toBeVisible();
     await expect(page.getByRole('link', { name: /Imprimir OS \/ orçamento/i })).toBeVisible();
   });
 
