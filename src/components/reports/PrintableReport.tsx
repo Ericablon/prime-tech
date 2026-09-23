@@ -55,6 +55,8 @@ export function PrintableReport({
             margin: 0 !important;
             padding: 0 !important;
             box-shadow: none !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
           @page { size: A4; margin: 11mm; }
         }
@@ -109,9 +111,11 @@ export function PrintableReport({
           <article
             className="cronos-print-page"
             style={{
+              position: 'relative',
               width: '100%',
               maxWidth: 840,
               minHeight: 1120,
+              overflow: 'hidden',
               padding: 30,
               color: '#111827',
               background: '#fff',
@@ -122,8 +126,32 @@ export function PrintableReport({
               lineHeight: 1.5,
             }}
           >
+            <img
+              src={brandLogo}
+              alt=""
+              aria-hidden="true"
+              className="cronos-print-watermark"
+              style={{
+                position: 'absolute',
+                left: '50%',
+                top: '54%',
+                width: 430,
+                height: 430,
+                transform: 'translate(-50%, -50%)',
+                objectFit: 'cover',
+                borderRadius: '50%',
+                opacity: 0.035,
+                filter: 'grayscale(1)',
+                pointerEvents: 'none',
+                userSelect: 'none',
+                zIndex: 0,
+              }}
+            />
+
             <header
               style={{
+                position: 'relative',
+                zIndex: 1,
                 display: 'flex',
                 alignItems: 'flex-start',
                 justifyContent: 'space-between',
@@ -137,7 +165,7 @@ export function PrintableReport({
                 <img
                   src={brandLogo}
                   alt="Prime Tech"
-                  style={{ width: 76, height: 76, objectFit: 'cover', borderRadius: 12 }}
+                  style={{ width: 70, height: 70, objectFit: 'cover', borderRadius: '50%' }}
                 />
                 <div>
                   <strong style={{ display: 'block', fontSize: 16 }}>
@@ -164,6 +192,8 @@ export function PrintableReport({
             {filters.length > 0 && (
               <div
                 style={{
+                  position: 'relative',
+                  zIndex: 1,
                   display: 'flex',
                   flexWrap: 'wrap',
                   gap: '5px 16px',
@@ -182,10 +212,14 @@ export function PrintableReport({
               </div>
             )}
 
-            {children}
+            <div style={{ position: 'relative', zIndex: 1 }}>
+              {children}
+            </div>
 
             <footer
               style={{
+                position: 'relative',
+                zIndex: 1,
                 display: 'flex',
                 justifyContent: 'space-between',
                 gap: 16,
