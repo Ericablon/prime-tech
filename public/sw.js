@@ -1,4 +1,4 @@
-const CACHE = 'cronos-shell-v2';
+const CACHE = 'cronos-shell-v3';
 const BASE = '/prime-tech/';
 const CORE = [
   BASE,
@@ -27,16 +27,19 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   if (event.request.method !== 'GET') return;
 
+  const isNavigation = event.request.mode === 'navigate';
+
   event.respondWith(
-    fetch(event.request).catch(async () => {
-      const cached = await caches.match(event.request);
-      if (cached) return cached;
+    fetch(event.request, isNavigation ? { cache: 'no-store' } : undefined)
+      .catch(async () => {
+        const cached = await caches.match(event.request);
+        if (cached) return cached;
 
-      if (event.request.mode === 'navigate') {
-        return caches.match(BASE);
-      }
+        if (isNavigation) {
+          return caches.match(BASE);
+        }
 
-      return Response.error();
-    }),
+        return Response.error();
+      }),
   );
 });
