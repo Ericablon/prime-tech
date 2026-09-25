@@ -25,7 +25,7 @@ jobs:
       - run: npm ci --ignore-scripts
       - run: npm run build
         env:
-          VITE_DATA_MODE: ${{ vars.VITE_DATA_MODE || 'supabase' }}
+          VITE_DATA_MODE: supabase
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://gwvssoaqvqcmofdsirtl.supabase.co' }}
           VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       - uses: actions/upload-pages-artifact@v3
