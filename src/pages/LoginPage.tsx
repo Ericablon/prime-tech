@@ -15,23 +15,10 @@ import { Link, Navigate } from 'react-router-dom';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
 import { brandLogo, brandMark } from '../lib/brand';
-import type { RoleCode } from '../types/domain';
-
-const roles: Array<{
-  role: RoleCode;
-  label: string;
-}> = [
-  { role: 'gestor', label: 'Gestor' },
-  { role: 'tecnico', label: 'Técnico' },
-  { role: 'comercial', label: 'Comercial' },
-  { role: 'atendimento', label: 'Atendimento' },
-];
 
 export function LoginPage() {
   const {
     user,
-    mode,
-    loginDemo,
     loginWithPassword,
   } = useAuth();
   const { theme, toggleTheme } = useTheme();
@@ -129,94 +116,71 @@ export function LoginPage() {
           <h1>CRONOS</h1>
         </header>
 
-        {mode === 'demo' ? (
-          <div className="login-v2-demo">
-            <span className="login-v2-section-label">
-              Acesso de demonstração
+        <form
+          onSubmit={handleLogin}
+          className="login-v2-form"
+        >
+          <label>
+            <span>E-mail corporativo</span>
+            <div className="login-v2-input">
+              <Mail size={17} />
+              <input
+                type="email"
+                value={email}
+                onChange={(event) => setEmail(event.target.value)}
+                onKeyDown={handleInputEnter}
+                autoComplete="username"
+                enterKeyHint="next"
+                placeholder="nome@empresa.com.br"
+                required
+              />
+            </div>
+          </label>
+
+          <label>
+            <span>Senha</span>
+            <div className="login-v2-input">
+              <KeyRound size={17} />
+              <input
+                type={show ? 'text' : 'password'}
+                value={password}
+                onChange={(event) => setPassword(event.target.value)}
+                onKeyDown={handleInputEnter}
+                autoComplete="current-password"
+                enterKeyHint="go"
+                placeholder="Digite sua senha"
+                required
+              />
+              <button
+                type="button"
+                aria-label={show ? 'Ocultar senha' : 'Mostrar senha'}
+                onClick={() => setShow((current) => !current)}
+              >
+                {show ? <EyeOff size={17} /> : <Eye size={17} />}
+              </button>
+            </div>
+          </label>
+
+          <div className="login-v2-form-actions">
+            <span className="login-v2-secure-hint">
+              <ShieldCheck size={13} /> Acesso protegido
             </span>
-
-            <div className="demo-grid login-v2-demo-grid">
-              {roles.map((item) => (
-                <button
-                  key={item.role}
-                  type="button"
-                  className="role-button login-v2-role-button"
-                  onClick={() => loginDemo(item.role)}
-                >
-                  <ShieldCheck size={18} />
-                  <span>{item.label}</span>
-                  <ArrowRight size={16} />
-                </button>
-              ))}
-            </div>
+            <Link to="/recuperar-senha" className="login-v2-forgot-link">
+              Esqueci minha senha
+            </Link>
           </div>
-        ) : (
-          <form
-            onSubmit={handleLogin}
-            className="login-v2-form"
+
+          {error && <p className="form-error login-v2-error">{error}</p>}
+
+          <button
+            type="submit"
+            className="primary-button wide login-v2-submit"
+            disabled={busy || !email.trim() || !password}
           >
-            <label>
-              <span>E-mail corporativo</span>
-              <div className="login-v2-input">
-                <Mail size={17} />
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(event) => setEmail(event.target.value)}
-                  onKeyDown={handleInputEnter}
-                  autoComplete="username"
-                  enterKeyHint="next"
-                  placeholder="nome@empresa.com.br"
-                  required
-                />
-              </div>
-            </label>
-
-            <label>
-              <span>Senha</span>
-              <div className="login-v2-input">
-                <KeyRound size={17} />
-                <input
-                  type={show ? 'text' : 'password'}
-                  value={password}
-                  onChange={(event) => setPassword(event.target.value)}
-                  onKeyDown={handleInputEnter}
-                  autoComplete="current-password"
-                  enterKeyHint="go"
-                  placeholder="Digite sua senha"
-                  required
-                />
-                <button
-                  type="button"
-                  aria-label={show ? 'Ocultar senha' : 'Mostrar senha'}
-                  onClick={() => setShow((current) => !current)}
-                >
-                  {show ? <EyeOff size={17} /> : <Eye size={17} />}
-                </button>
-              </div>
-            </label>
-
-            <div className="login-v2-form-actions">
-              <span className="login-v2-secure-hint">
-                <ShieldCheck size={13} /> Acesso protegido
-              </span>
-              <Link to="/recuperar-senha" className="login-v2-forgot-link">
-                Esqueci minha senha
-              </Link>
-            </div>
-
-            {error && <p className="form-error login-v2-error">{error}</p>}
-
-            <button
-              type="submit"
-              className="primary-button wide login-v2-submit"
-              disabled={busy || !email.trim() || !password}
-            >
-              <span>{busy ? 'Entrando...' : 'Entrar no sistema'}</span>
-              {!busy && <ArrowRight size={18} />}
-            </button>
-          </form>
-        )}
+            <span>{busy ? 'Entrando...' : 'Entrar no sistema'}</span>
+            {!busy && <ArrowRight size={18} />}
+          </button>
+        </form>
 
         <footer className="login-v2-footer">
           <ShieldCheck size={15} />
