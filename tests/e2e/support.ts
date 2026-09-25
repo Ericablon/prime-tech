@@ -14,7 +14,15 @@ async function expectDemoStorageContains(page: Page, value: string) {
 
 export async function loginAsGestor(page: Page) {
   await page.goto('/login');
-  await page.getByRole('button', { name: 'Gestor' }).click();
+  await page.evaluate(() => {
+    localStorage.setItem('cronos-user', JSON.stringify({
+      id: 'demo-gestor',
+      full_name: 'Gestor Prime Tech',
+      role_code: 'gestor',
+      active: true,
+    }));
+  });
+  await page.reload();
   await expect(page).toHaveURL(/\/$/);
 }
 
