@@ -23,11 +23,21 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci --ignore-scripts
+      - name: Validar configuração pública do Supabase
+        env:
+          SUPABASE_PUBLIC_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || vars.VITE_SUPABASE_ANON_KEY }}
+        run: |
+          if [ -z "$SUPABASE_PUBLIC_KEY" ]; then
+            echo "Supabase sem chave pública configurada no GitHub Actions."
+            echo "Defina VITE_SUPABASE_PUBLISHABLE_KEY ou VITE_SUPABASE_ANON_KEY em Actions Variables."
+            exit 1
+          fi
       - run: npm run build
         env:
           VITE_DATA_MODE: supabase
           VITE_SUPABASE_URL: ${{ vars.VITE_SUPABASE_URL || 'https://gwvssoaqvqcmofdsirtl.supabase.co' }}
-          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
+          VITE_SUPABASE_PUBLISHABLE_KEY: ${{ vars.VITE_SUPABASE_PUBLISHABLE_KEY || vars.VITE_SUPABASE_ANON_KEY }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.VITE_SUPABASE_ANON_KEY || vars.VITE_SUPABASE_PUBLISHABLE_KEY }}
       - uses: actions/upload-pages-artifact@v3
         with:
           path: dist
