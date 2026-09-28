@@ -17,37 +17,57 @@ export interface FiscalGatewayResult {
   error?: string;
 }
 
-export interface FiscalGateway {
-  issue(documentId: string): Promise<FiscalGatewayResult>;
-  status(documentId: string): Promise<FiscalGatewayResult>;
-  cancel(documentId: string, reason: string): Promise<FiscalGatewayResult>;
+export interface FiscalCertificateInfo {
+  status: 'stored' | 'ready' | 'expired' | 'revoked' | 'error';
+  subjectName?: string | null;
+  issuerName?: string | null;
+  serialNumber?: string | null;
+  certificateDocument?: string | null;
+  validFrom?: string | null;
+  validUntil?: string | null;
+  commonName?: string | null;
+  error?: string;
 }
 
-async function invoke(action: 'issue' | 'status' | 'cancel', documentId: string, reason?: string) {
+export interface FiscalGateway {
+  certificateInfo(companyId: string, certificatePassword?: string): Promise<FiscalCertificateInfo>;
+  issue(documentId: string, certificatePassword?: string): Promise<FiscalGatewayResult>;
+  status(documentId: string, certificatePassword?: string): Promise<FiscalGatewayResult>;
+  cancel(documentId: string, reason: string, certificatePassword?: string): Promise<FiscalGatewayResult>;
+}
+
+async function invoke<T>(body: Record<string, unknown>) {
   if (!supabase) throw new Error('Supabase não configurado.');
-  const { data, error } = await supabase.functions.invoke('fiscal-gateway', {
-    body: { action, documentId, reason },
-  });
+  const { data, error } = await supabase.functions.invoke('fiscal-gateway', { body });
   if (error) throw error;
-  const result = data as FiscalGatewayResult & { error?: string };
+  const result = data as T & { error?: string };
   if (result?.error) throw new Error(result.error);
   return result;
 }
 
 export class SupabaseFiscalGateway implements FiscalGateway {
-  issue(documentId: string) {
-    return invoke('issue', documentId);
+  certificateInfo(companyId: string, certificatePassword?: string) {
+    return invoke<FiscalCertificateInfo>({ action: 'certificate_info', companyId, certificatePassword });
   }
 
-  status(documentId: string) {
-    return invoke('status', documentId);
+  issue(documentId: string, certificatePassword?: string) {
+    return invoke<FiscalGatewayResult>({ action: 'issue', documentId, certificatePassword });
   }
 
-  cancel(documentId: string, reason: string) {
+  status(documentId: string, certificatePassword?: string) {
+    return invoke<FiscalGatewayResult>({ action: 'status', documentId, certificatePassword });
+  }
+
+  cancel(documentId: string, reason: string, certificatePassword?: string) {
     if (reason.trim().length < 15 || reason.trim().length > 255) {
       throw new Error('A justificativa deve ter entre 15 e 255 caracteres.');
     }
-    return invoke('cancel', documentId, reason.trim());
+    return invoke<FiscalGatewayResult>({
+      action: 'cancel',
+      documentId,
+      reason: reason.trim(),
+      certificatePassword,
+    });
   }
 }
 
