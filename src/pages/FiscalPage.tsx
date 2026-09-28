@@ -11,14 +11,12 @@ import {
   Send,
   Settings2,
   ShieldAlert,
-  XCircle,
 } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 
 import { MetricCard } from '../components/ui/MetricCard';
 import { PageHeader } from '../components/ui/PageHeader';
-import { StatusBadge } from '../components/ui/StatusBadge';
 import { useAuth } from '../contexts/AuthContext';
 import { usePrimeTech } from '../contexts/PrimeTechContext';
 import { money, orderCode } from '../lib/formatters';
@@ -76,9 +74,15 @@ function totals(order: ServiceOrder) {
   return { services, products, total: services + products };
 }
 
+function providerLabel(provider?: string | null) {
+  if (provider === 'sefin_nacional') return 'SEFIN Nacional';
+  if (provider === 'focus_nfe') return 'Focus NFe (legado)';
+  return provider || 'NFS-e Nacional';
+}
+
 export function FiscalPage() {
   const { user, mode } = useAuth();
-  const { orders, clients, company, companyId, loading, error } = usePrimeTech();
+  const { orders, clients, companyId, loading, error } = usePrimeTech();
 
   const [documents, setDocuments] = useState<FiscalDocument[]>([]);
   const [settings, setSettings] = useState<FiscalSettings | null>(null);
@@ -86,11 +90,8 @@ export function FiscalPage() {
   const [busyId, setBusyId] = useState<string | null>(null);
   const [localError, setLocalError] = useState('');
   const [success, setSuccess] = useState('');
-  const [cancelId, setCancelId] = useState<string | null>(null);
-  const [cancelReason, setCancelReason] = useState('');
 
   const canIssue = can(user, 'fiscal.issue');
-  const canCancel = can(user, 'fiscal.cancel');
   const canSettings = can(user, 'fiscal.settings');
 
   const loadFiscal = useCallback(async () => {
@@ -137,10 +138,14 @@ export function FiscalPage() {
   const pending = documents.filter((document) => ['draft', 'processing'].includes(document.status));
   const errors = documents.filter((document) => document.status === 'error');
   const eligibleAmount = rows.reduce((sum, row) => sum + row.totals.total, 0);
+  const environment = settings?.environment ?? 'homologation';
+  const gatewayReady = settings?.gateway_provider === 'nfse_nacional' && settings?.nfse_mode === 'national';
 
   async function prepare(order: ServiceOrder, documentType: DocumentType) {
     const client = supabase;
     if (!canIssue || mode !== 'supabase' || !client) return setLocalError('Seu perfil não pode preparar documentos fiscais.');
+    if (documentType !== 'nfse') return setLocalError('A emissão direta está sendo ativada primeiro para NFS-e Nacional.');
+    if (!gatewayReady) return setLocalError('Conclua a Configuração fiscal da NFS-e Nacional antes de preparar a nota.');
 
     setBusyId(order.id); setLocalError(''); setSuccess('');
     try {
@@ -155,124 +160,151 @@ export function FiscalPage() {
       if (prepared?.id) setBusyId(null);
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Não foi possível preparar o documento.';
-      setLocalError(message.includes('prepare_fiscal_document') ? 'A migration fiscal 0011 ainda precisa ser aplicada no Supabase.' : message);
+      setLocalError(message.includes('prepare_fiscal_document') ? 'A migration fiscal ainda precisa ser aplicada no Supabase.' : message);
     } finally { setBusyId(null); }
   }
 
-  async function gateway(document: FiscalDocument, action: 'issue' | 'status' | 'cancel', reason?: string) {
+  async function edgeErrorMessage(errorValue: unknown) {
+    const errorObject = errorValue as { message?: string; context?: Response };
+    try {
+      if (errorObject.context) {
+        const payload = await errorObject.context.clone().json() as { error?: string };
+        if (payload?.error) return payload.error;
+      }
+    } catch {
+      // Mantém a mensagem original se o corpo não for JSON.
+    }
+    return errorObject.message || 'Falha na Edge Function fiscal.';
+  }
+
+  async function gateway(document: FiscalDocument, action: 'issue' | 'status') {
     const client = supabase;
     if (mode !== 'supabase' || !client) return;
     if (action === 'issue' && !canIssue) return setLocalError('Seu perfil não pode emitir notas.');
-    if (action === 'cancel' && !canCancel) return setLocalError('Seu perfil não pode cancelar notas.');
+    if (!gatewayReady) return setLocalError('A NFS-e Nacional direta ainda não está configurada para esta empresa.');
+
     if (action === 'issue' && document.environment === 'production') {
-      const confirmed = window.confirm('Esta emissão está em PRODUÇÃO e terá valor fiscal. Deseja realmente transmitir a nota?');
+      const confirmed = window.confirm('Esta emissão está em PRODUÇÃO e terá valor fiscal. Deseja realmente transmitir a NFS-e?');
       if (!confirmed) return;
     }
+
+    const passwordInput = window.prompt(
+      'Senha do certificado A1\n\nA senha será usada somente nesta operação e NÃO será salva. Se CRONOS_A1_PASSWORD já estiver configurado no Supabase, deixe em branco.',
+      '',
+    );
+    if (passwordInput === null) return;
+    const certificatePassword = passwordInput.length ? passwordInput : undefined;
 
     setBusyId(document.id); setLocalError(''); setSuccess('');
     try {
       const { data, error: invokeError } = await client.functions.invoke('fiscal-gateway', {
-        body: { action, documentId: document.id, reason },
+        body: { action, documentId: document.id, certificatePassword },
       });
-      if (invokeError) throw invokeError;
-      const result = data as { error?: string; status?: string; number?: string } | null;
+      if (invokeError) throw new Error(await edgeErrorMessage(invokeError));
+      const result = data as { error?: string; status?: string; number?: string; accessKey?: string } | null;
       if (result?.error) throw new Error(result.error);
       setSuccess(
-        action === 'issue' ? `Transmissão enviada. Status: ${result?.status ?? 'processando'}.`
-          : action === 'status' ? `Situação consultada: ${result?.status ?? 'atualizada'}.`
-            : 'Cancelamento solicitado ao provedor fiscal.',
+        action === 'issue'
+          ? `NFS-e transmitida diretamente à SEFIN Nacional. Status: ${result?.status ?? 'autorizada'}.`
+          : `NFS-e consultada diretamente na SEFIN. Status: ${result?.status ?? 'atualizado'}.`,
       );
-      setCancelId(null); setCancelReason('');
       await loadFiscal();
     } catch (cause) {
       const message = cause instanceof Error ? cause.message : 'Falha na integração fiscal.';
-      setLocalError(message.includes('Function not found') || message.includes('FunctionsHttpError')
-        ? 'A Edge Function fiscal-gateway ainda precisa ser publicada no Supabase e receber o token do provedor.'
-        : message);
+      setLocalError(
+        message.includes('Function not found') || message.includes('FunctionsHttpError')
+          ? 'A Edge Function fiscal-gateway ainda precisa ser publicada no Supabase.'
+          : message,
+      );
     } finally { setBusyId(null); }
   }
 
-  if (loading) return <div className="empty-state"><RefreshCw size={38} /><h3>Carregando Fiscal</h3></div>;
+  async function openFiscalFile(path?: string | null, externalUrl?: string | null) {
+    if (externalUrl && /^https?:\/\//i.test(externalUrl)) {
+      window.open(externalUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+    if (!path || !supabase) return;
 
-  const environment = settings?.environment ?? 'homologation';
-  const gatewayReady = settings?.gateway_provider === 'focus_nfe';
+    setLocalError('');
+    const { data, error: signedError } = await supabase.storage.from('fiscal-documents').createSignedUrl(path, 300);
+    if (signedError || !data?.signedUrl) {
+      setLocalError(signedError?.message ?? 'Não foi possível abrir o arquivo fiscal.');
+      return;
+    }
+    window.open(data.signedUrl, '_blank', 'noopener,noreferrer');
+  }
+
+  if (loading) return <div className="empty-state"><RefreshCw size={38}/><h3>Carregando Fiscal</h3></div>;
 
   return <>
     <PageHeader
       eyebrow="Fiscal"
-      title="Fiscal e notas"
-      description="Da OS para NF-e, NFC-e e NFS-e: preparação, transmissão, consulta, XML/PDF e cancelamento."
-      actions={canSettings ? <Link to="/fiscal/configuracao" className="ghost-button"><Settings2 size={16} /> Configuração fiscal</Link> : undefined}
+      title="NFS-e Nacional direta"
+      description="Emissão de serviço usando o certificado A1 da empresa e a API oficial da SEFIN Nacional, sem provedor fiscal mensal."
+      actions={canSettings ? <Link to="/fiscal/configuracao" className="ghost-button"><Settings2 size={16}/> Configuração fiscal</Link> : undefined}
     />
 
     {(error || localError || success) && <section className="notice" style={{ marginBottom: 16 }}>
-      {error || localError ? <AlertCircle size={20} /> : <CheckCircle2 size={20} />}
-      <div><strong>{error || localError ? 'Atenção fiscal' : 'Fiscal atualizado'}</strong><p>{error || localError || success}</p></div>
+      {error || localError ? <AlertCircle size={20}/> : <CheckCircle2 size={20}/>}<div><strong>{error || localError ? 'Atenção fiscal' : 'Fiscal atualizado'}</strong><p>{error || localError || success}</p></div>
     </section>}
 
     <div className="metrics-grid">
-      <MetricCard label="OS para faturar" value={candidates.length} icon={FileClock} />
-      <MetricCard label="Em processamento" value={pending.length} icon={RefreshCw} tone="violet" />
-      <MetricCard label="Autorizadas" value={authorized.length} icon={CheckCircle2} tone="green" />
-      <MetricCard label="Valor das OS" value={money.format(eligibleAmount)} helper={`${errors.length} documento(s) com erro`} icon={FileText} tone="violet" />
+      <MetricCard label="OS para faturar" value={candidates.length} icon={FileClock}/>
+      <MetricCard label="Em processamento" value={pending.length} icon={RefreshCw} tone="violet"/>
+      <MetricCard label="Autorizadas" value={authorized.length} icon={CheckCircle2} tone="green"/>
+      <MetricCard label="Valor das OS" value={money.format(eligibleAmount)} helper={`${errors.length} documento(s) com erro`} icon={FileText} tone="violet"/>
     </div>
 
     <section className="panel" style={{ marginBottom: 20 }}>
-      <div className="panel-head"><div><span className="eyebrow">Ambiente fiscal</span><h2>{environment === 'production' ? 'Produção' : 'Homologação / testes'}</h2></div><span className={`stock-state ${gatewayReady ? 'ok' : 'critical'}`}>{gatewayReady ? 'Focus NFe configurado no sistema' : 'Configuração pendente'}</span></div>
+      <div className="panel-head"><div><span className="eyebrow">Ambiente fiscal</span><h2>{environment === 'production' ? 'Produção' : 'Produção restrita / homologação'}</h2></div><span className={`stock-state ${gatewayReady ? 'ok' : 'critical'}`}>{gatewayReady ? 'A1 + SEFIN Nacional' : 'Configuração pendente'}</span></div>
       <div className="fiscal-flow">
-        <div className="fiscal-step active"><span>1</span><div><strong>Cadastros</strong><small>Emitente, cliente, NCM/CFOP e serviços.</small></div></div>
-        <div className="fiscal-step active"><span>2</span><div><strong>Preparação</strong><small>O banco valida e congela os itens da nota.</small></div></div>
-        <div className={`fiscal-step ${gatewayReady ? 'active' : ''}`}><span>3</span><div><strong>Transmissão</strong><small>Edge Function envia ao provedor sem expor o token.</small></div></div>
-        <div className="fiscal-step active"><span>4</span><div><strong>Retorno</strong><small>Número, chave, protocolo, XML/PDF e cancelamento.</small></div></div>
+        <div className="fiscal-step active"><span>1</span><div><strong>Cadastros</strong><small>Emitente, tomador e regra fiscal do serviço.</small></div></div>
+        <div className="fiscal-step active"><span>2</span><div><strong>DPS</strong><small>O Cronos congela os dados e reserva a numeração.</small></div></div>
+        <div className={`fiscal-step ${gatewayReady ? 'active' : ''}`}><span>3</span><div><strong>Assinatura + envio</strong><small>O A1 assina a DPS e o backend envia direto à SEFIN Nacional.</small></div></div>
+        <div className="fiscal-step active"><span>4</span><div><strong>Retorno</strong><small>Chave e XML autorizado ficam vinculados à OS.</small></div></div>
       </div>
-      {environment !== 'production' && <div className="notice"><ShieldAlert size={19} /><div><strong>Ambiente seguro de homologação</strong><p>Use este ambiente para validar os cadastros e o fluxo antes de habilitar notas com valor fiscal.</p></div></div>}
+      {environment !== 'production' && <div className="notice"><ShieldAlert size={19}/><div><strong>Homologação primeiro</strong><p>Este ambiente permite validar certificado, cadastros e tributação antes de qualquer emissão com valor fiscal.</p></div></div>}
+      <div className="notice" style={{ marginTop: 12 }}><AlertCircle size={19}/><div><strong>NF-e/NFC-e</strong><p>Nesta etapa o emissor direto está habilitado somente para NFS-e de serviços. NF-e/NFC-e de produtos permanecem desativadas até a integração direta com a SEFAZ.</p></div></div>
     </section>
 
     <section className="panel" style={{ marginBottom: 20 }}>
       <div className="panel-head"><div><span className="eyebrow">Fila fiscal</span><h2>OS prontas para faturamento</h2></div><span className="ghost-button">{rows.length} OS</span></div>
-      {rows.length === 0 ? <div className="empty-state"><FileSearch size={38} /><h3>Nenhuma OS pronta para faturamento</h3><p>As OS aparecem aqui em “pronta para retirada” ou “entregue”.</p></div> : <div className="table-wrap"><table>
+      {rows.length === 0 ? <div className="empty-state"><FileSearch size={38}/><h3>Nenhuma OS pronta para faturamento</h3><p>As OS aparecem aqui em “pronta para retirada” ou “entregue”.</p></div> : <div className="table-wrap"><table>
         <thead><tr><th>OS</th><th>Cliente</th><th>Composição</th><th>Total</th><th>Documentos</th><th>Ações</th></tr></thead>
         <tbody>{rows.map(({ order, client, totals: orderTotals, documents: orderDocuments }) => <tr key={order.id}>
-          <td><strong>{orderCode(order.order_number)}</strong><small>{order.equipment ?? 'Equipamento'}</small></td>
+          <td><strong>{orderCode(order.order_number)}</strong><small>{order.equipment_description ?? order.equipment ?? 'Equipamento'}</small></td>
           <td><strong>{order.client_name ?? client?.name ?? 'Cliente'}</strong><small>{client?.document || 'CPF/CNPJ pendente'}</small></td>
           <td><small>Serviços: {money.format(orderTotals.services)}</small><small>Produtos: {money.format(orderTotals.products)}</small></td>
           <td><strong>{money.format(orderTotals.total)}</strong></td>
           <td>{orderDocuments.length ? orderDocuments.map((document) => <div key={document.id} style={{ marginBottom: 5 }}><strong>{documentLabels[document.document_type]}</strong><small>{statusLabels[document.status]} · {document.environment ?? 'homologation'}</small></div>) : <span className="muted">Nenhum</span>}</td>
           <td><div className="quick-actions" style={{ flexWrap: 'wrap' }}>
-            <Link to={`/ordens/${order.id}`} className="ghost-button"><FileSearch size={15} /> OS</Link>
-            {canIssue && orderTotals.services > 0 && !orderDocuments.some((doc) => doc.document_type === 'nfse' && ['draft','processing','authorized'].includes(doc.status)) && <button type="button" disabled={busyId === order.id} onClick={() => void prepare(order, 'nfse')}><FilePlus2 size={15} /> Preparar NFS-e</button>}
-            {canIssue && orderTotals.products > 0 && settings?.nfe_enabled !== false && !orderDocuments.some((doc) => doc.document_type === 'nfe' && ['draft','processing','authorized'].includes(doc.status)) && <button type="button" disabled={busyId === order.id} onClick={() => void prepare(order, 'nfe')}><FilePlus2 size={15} /> Preparar NF-e</button>}
-            {canIssue && orderTotals.products > 0 && settings?.nfce_enabled === true && !orderDocuments.some((doc) => doc.document_type === 'nfce' && ['draft','processing','authorized'].includes(doc.status)) && <button type="button" disabled={busyId === order.id} onClick={() => void prepare(order, 'nfce')}><FilePlus2 size={15} /> Preparar NFC-e</button>}
+            <Link to={`/ordens/${order.id}`} className="ghost-button"><FileSearch size={15}/> OS</Link>
+            {canIssue && gatewayReady && settings?.nfse_enabled === true && orderTotals.services > 0 && !orderDocuments.some((doc) => doc.document_type === 'nfse' && ['draft','processing','authorized'].includes(doc.status)) && <button type="button" disabled={busyId === order.id} onClick={() => void prepare(order, 'nfse')}><FilePlus2 size={15}/> Preparar NFS-e</button>}
           </div></td>
         </tr>)}</tbody>
       </table></div>}
     </section>
 
-    {cancelId && <section className="panel" style={{ marginBottom: 20 }}>
-      <div className="panel-head"><div><span className="eyebrow">Cancelamento fiscal</span><h2>Justificativa</h2></div><button type="button" className="ghost-button" onClick={() => { setCancelId(null); setCancelReason(''); }}>Fechar</button></div>
-      <textarea rows={3} value={cancelReason} onChange={(event) => setCancelReason(event.target.value)} placeholder="Informe o motivo do cancelamento (mínimo 15 caracteres)." style={{ width: '100%' }} />
-      <div className="quick-actions" style={{ marginTop: 10 }}><button type="button" disabled={cancelReason.trim().length < 15 || busyId === cancelId} onClick={() => { const doc = documents.find((item) => item.id === cancelId); if (doc) void gateway(doc, 'cancel', cancelReason.trim()); }}><XCircle size={16} /> Confirmar cancelamento</button></div>
-    </section>}
-
     <section className="panel">
-      <div className="panel-head"><div><span className="eyebrow">Documentos fiscais</span><h2>Emissões e histórico</h2></div>{documentsLoading && <span className="muted"><RefreshCw size={14} /> Atualizando</span>}</div>
-      {documents.length === 0 ? <div className="empty-state"><FileText size={38} /><h3>Nenhum documento preparado</h3><p>Prepare a nota a partir da fila fiscal acima.</p></div> : <div className="table-wrap"><table>
+      <div className="panel-head"><div><span className="eyebrow">Documentos fiscais</span><h2>Emissões e histórico</h2></div>{documentsLoading && <span className="muted"><RefreshCw size={14}/> Atualizando</span>}</div>
+      {documents.length === 0 ? <div className="empty-state"><FileText size={38}/><h3>Nenhum documento preparado</h3><p>Prepare a NFS-e a partir da fila fiscal acima.</p></div> : <div className="table-wrap"><table>
         <thead><tr><th>Documento</th><th>OS</th><th>Status</th><th>Número / chave</th><th>Valor</th><th>Arquivos</th><th>Ações</th></tr></thead>
         <tbody>{documents.map((document) => {
           const order = orders.find((item) => item.id === document.service_order_id);
-          const pdf = document.pdf_url ?? document.pdf_path;
-          const xml = document.xml_url ?? document.xml_path;
           return <tr key={document.id}>
-            <td><strong>{documentLabels[document.document_type]}</strong><small>{document.environment ?? 'homologation'} · {document.provider ?? 'focus_nfe'}</small></td>
+            <td><strong>{documentLabels[document.document_type]}</strong><small>{document.environment ?? 'homologation'} · {providerLabel(document.provider)}</small></td>
             <td>{order ? orderCode(order.order_number) : '—'}</td>
             <td><span className={`stock-state ${document.status === 'authorized' ? 'ok' : document.status === 'error' ? 'critical' : ''}`}>{statusLabels[document.status]}</span><small>{document.provider_status || document.error_message || ''}</small></td>
             <td><strong>{document.number || '—'}{document.series ? ` / ${document.series}` : ''}</strong><small>{document.access_key || document.protocol || document.reference || document.provider_reference || 'Sem retorno'}</small></td>
             <td>{money.format(Number(document.total_amount ?? 0))}</td>
-            <td><div className="quick-actions">{pdf && <a className="ghost-button" href={pdf} target="_blank" rel="noreferrer"><Download size={15} /> PDF</a>}{xml && <a className="ghost-button" href={xml} target="_blank" rel="noreferrer"><Download size={15} /> XML</a>}</div></td>
+            <td><div className="quick-actions">
+              {document.pdf_url && <a className="ghost-button" href={document.pdf_url} target="_blank" rel="noreferrer"><Download size={15}/> PDF</a>}
+              {(document.xml_path || document.xml_url) && <button type="button" className="ghost-button" onClick={() => void openFiscalFile(document.xml_path, document.xml_url)}><Download size={15}/> XML</button>}
+            </div></td>
             <td><div className="quick-actions" style={{ flexWrap: 'wrap' }}>
-              {document.status === 'draft' && canIssue && <button type="button" disabled={busyId === document.id} onClick={() => void gateway(document, 'issue')}><Send size={15} /> Emitir</button>}
-              {['processing','error','authorized'].includes(document.status) && <button type="button" className="ghost-button" disabled={busyId === document.id} onClick={() => void gateway(document, 'status')}><RotateCw size={15} /> Consultar</button>}
-              {document.status === 'authorized' && canCancel && <button type="button" className="ghost-button" disabled={busyId === document.id} onClick={() => { setCancelId(document.id); setCancelReason(''); }}><XCircle size={15} /> Cancelar</button>}
+              {document.document_type === 'nfse' && document.status === 'draft' && canIssue && gatewayReady && <button type="button" disabled={busyId === document.id} onClick={() => void gateway(document, 'issue')}><Send size={15}/> Emitir</button>}
+              {document.document_type === 'nfse' && ['processing','error','authorized'].includes(document.status) && document.access_key && gatewayReady && <button type="button" className="ghost-button" disabled={busyId === document.id} onClick={() => void gateway(document, 'status')}><RotateCw size={15}/> Consultar</button>}
             </div></td>
           </tr>;
         })}</tbody>
