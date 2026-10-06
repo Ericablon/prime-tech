@@ -342,8 +342,23 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       async loginWithPassword(email, password) {
         const client = supabase;
         if (!client) throw new Error('Supabase não configurado');
-        const { error } = await client.auth.signInWithPassword({ email, password });
-        if (error) throw error;
+
+        let { error } = await client.auth.signInWithPassword({ email, password });
+
+        // Uma falha de rede transitória não deve derrubar o login na primeira tentativa.
+        if (error && /failed to fetch|networkerror|network request failed/i.test(error.message)) {
+          await new Promise((resolve) => window.setTimeout(resolve, 700));
+          ({ error } = await client.auth.signInWithPassword({ email, password }));
+        }
+
+        if (error) {
+          if (/failed to fetch|networkerror|network request failed/i.test(error.message)) {
+            throw new Error(
+              'Não foi possível conectar ao servidor do CRONOS. Atualize a página e tente novamente. Se persistir, o projeto Supabase pode estar indisponível ou bloqueado nesta rede.',
+            );
+          }
+          throw error;
+        }
       },
 
       async logout() {
